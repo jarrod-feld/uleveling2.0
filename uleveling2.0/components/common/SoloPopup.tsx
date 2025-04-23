@@ -1,12 +1,12 @@
-/* SoloPopup.tsx – v9
+/* SoloPopup.tsx – v10
  * -------------------------------------------------------------
+ *  • Uses simple background/border styles instead of images
  *  • onLayout measures content ONCE per step (no flicker)
- *  • GIF is full height from start; wrapper reveals it
- *  • Drop-down opens in 150 ms, borders stay flush
+ *  • Drop-down opens in 150 ms
  */
 
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
-import { Dimensions, StyleSheet, Image, View, ImageBackground } from 'react-native';
+import { Dimensions, StyleSheet, View } from 'react-native';
 import Modal from 'react-native-modal';
 import Animated, {
   useSharedValue,
@@ -18,13 +18,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scale, verticalScale, moderateScale } from '@/constants/scaling';
 
-const BORDER = moderateScale(30);     // blue PNG height
 const DUR    = 150;                   // fast tween
-const PAD_V  = verticalScale(20);
+const PAD_V  = verticalScale(10);
 const { width } = Dimensions.get('window');
-
-/* wrap ImageBackground so we can animate its style */
-const AnimatedBG = Animated.createAnimatedComponent(ImageBackground);
 
 interface Props {
   visible: boolean;
@@ -81,19 +77,11 @@ export default function SoloPopup({
     }
   }, [visible]);
 
-  /* wrapper height & opacity */
-  const clipStyle = useAnimatedStyle(() => ({
+  /* Animated style for the panel (height, opacity) */
+  const animatedPanelStyle = useAnimatedStyle(() => ({
     height : interpolate(prog.value, [0, 1], [0, panelH.value]),
     opacity: prog.value,
   }));
-
-  /* bottom border tracks bottom edge */
-  const bottomBorder = useAnimatedStyle(() => ({
-    transform: [{ translateY: interpolate(prog.value, [0, 1], [0, panelH.value]) }],
-  }));
-
-  /* GIF is rendered at full height from the start */
-  const gifStyle = useAnimatedStyle(() => ({ height: panelH.value }));
 
   if (!mounted) return null;
 
@@ -102,38 +90,15 @@ export default function SoloPopup({
       isVisible={mounted}
       backdropOpacity={0.75}
       onBackdropPress={onClose}
-      animationIn="none"
-      animationOut="none"
       style={styles.modal}
-      useNativeDriver
     >
       <View style={{ width: width * 0.85, alignItems: 'center' }}>
-        {/* fixed top border */}
-        <Image
-          source={require('@/assets/img/techno-border-top.png')}
-          style={styles.border}
-          resizeMode="stretch"
-        />
-
-        {/* animated bottom border */}
-        <Animated.Image
-          source={require('@/assets/img/techno-border-bottom.png')}
-          style={[styles.border, bottomBorder]}
-          resizeMode="stretch"
-        />
-
-        {/* clipping wrapper grows to reveal full-height GIF */}
-        <Animated.View style={[styles.panel, clipStyle]}>
-          <AnimatedBG
-            source={require('@/assets/img/techno-background.gif')}
-            style={[styles.bg, gifStyle]}
-            imageStyle={{ resizeMode: 'stretch', width: '100%', height: '100%' }}
-          >
-            {/* first (and only) height measure happens here */}
-            <View onLayout={onLayout} style={styles.inner}>
-              {children}
-            </View>
-          </AnimatedBG>
+        {/* Animated container with background and border */}
+        <Animated.View style={[styles.panel, animatedPanelStyle]}>
+          {/* Content area with layout measurement */}
+          <View onLayout={onLayout} style={styles.inner}>
+            {children}
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -143,12 +108,18 @@ export default function SoloPopup({
 /* ---------------- styles ---------------- */
 const styles = StyleSheet.create({
   modal : { margin: 0, justifyContent: 'center', alignItems: 'center' },
-  border: { position: 'absolute', top: 0, width: '100%', height: BORDER, zIndex: 10 },
-  panel : { width: '100%', overflow: 'hidden' },
-  bg    : { width: '100%', alignItems: 'center' },
+  panel : {
+    width: '100%',
+    overflow: 'hidden',
+    backgroundColor: '#555555',
+    borderRadius: moderateScale(10),
+    borderWidth: moderateScale(2),
+    borderColor: '#FFFFFF',
+  },
   inner : {
     paddingHorizontal: scale(12),
     paddingVertical  : PAD_V,
     alignItems: 'center',
+    width: '100%',
   },
 });

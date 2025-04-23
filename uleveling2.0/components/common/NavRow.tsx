@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
     width: '90%',
     justifyContent: 'space-between',
     marginTop: verticalScale(25),
-    marginBottom: verticalScale(15),
+    marginBottom: verticalScale(1),
   },
   btn: {
     paddingVertical: verticalScale(10),

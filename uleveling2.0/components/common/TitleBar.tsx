@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: moderateScale(8),
     shadowOffset: { width: 0, height: 0 },
-    marginTop: verticalScale(20),   // ← tweak this number to taste
+    marginTop: verticalScale(30),   // ← tweak this number to taste
 
     /* subtle glow */
   },

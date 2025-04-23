@@ -38,6 +38,31 @@ import Step13_Paywall        from '@/components/onboarding/Step13_Paywall';
 import Step14_Done           from '@/components/onboarding/Step14_Done';
 
 const TOTAL_STEPS = 14;            // 1-14 inclusive
+
+/* --- Types --- */
+// TODO: Define more specific types as components are built
+interface OnboardingData {
+  age?: number;
+  gender?: 'Male' | 'Female' | 'Other';
+  lifeStatus?: {
+    working?: boolean;
+    school?: boolean;
+  };
+  sleepWake?: string; // Example: "10:00 PM"
+  sleepBed?: string; // Example: "6:00 AM"
+  hoursWork?: number;
+  hoursSchool?: number;
+  focusAreas?: { [key: string]: boolean }; // e.g., { 'Dating': true, 'OtherText': 'xyz' }
+  focusAreasOtherText?: string;
+  roadmapChoice?: 'Create' | 'Template';
+  goals?: { description: string; timeframe: string }[]; // Step 9a
+  template?: string; // Step 9b
+  templateIntensity?: 'Low' | 'Med' | 'High'; // Step 9b
+  foundUs?: string; // e.g., 'Instagram', 'OtherText'
+  foundUsOtherText?: string;
+  rating?: number; // 1-5
+}
+
 /* ------------------------------------------------------------------ */
 
 export default function OnboardingIndex() {
@@ -54,13 +79,17 @@ export default function OnboardingIndex() {
         require('@/assets/img/techno-border-bottom.png'),
       ]);
       setAssetsReady(true);
+      // Assume step 1 is initially valid
+      setStepValid(true);
     })();
   }, []);
 
-  /* ------------ normal popup state -------------------------- */
+  /* ------------ onboarding & popup state -------------------- */
   const [step,       setStep]       = useState<number>(1);
   const [queuedStep, setQueuedStep] = useState<number | null>(null);
   const [popupVisible, setPopupVisible] = useState(true);
+  const [onboardingData, setOnboardingData] = useState<OnboardingData>({});
+  const [isStepValid, setStepValid] = useState<boolean>(false); // Default to false until step validates
 
   const openPopup  = () => setPopupVisible(true);
   const closePopup = () => setPopupVisible(false);
@@ -73,11 +102,14 @@ export default function OnboardingIndex() {
 
   const handleNext = () => {
     if (step === TOTAL_STEPS) {
-      setQueuedStep(null);
-      closePopup();
+      setQueuedStep(null); // Prevent reopening popup
+      closePopup(); // Close normally, onClosed will navigate
       return;
     }
-    setQueuedStep(step + 1);
+    let nextStep = step + 1;
+    // Special logic for step 9 based on step 8 choice?
+    // Or handle rendering Step09_GoalList vs Step09_Template in renderStep
+    setQueuedStep(nextStep);
     closePopup();
   };
 
@@ -85,10 +117,12 @@ export default function OnboardingIndex() {
   const handleClosed = () => {
     if (queuedStep !== null) {
       setStep(queuedStep);
+      setStepValid(false); // Reset validation for the new step
       setQueuedStep(null);
       openPopup();
     } else if (step === TOTAL_STEPS) {
-      router.replace('/(tabs)/dashboard');
+      // Only navigate when the final step (14) is closed *without* a queued step
+      router.replace('/(tabs)/dashboard' as any); // Cast to any to bypass strict type check
     }
   };
 
@@ -100,10 +134,10 @@ export default function OnboardingIndex() {
       case 3:  return 'What is your Gender?';
       case 4:  return 'Where are you in life?';
       case 5:  return 'Sleep Schedule';
-      case 6:  return 'Time at Work/School';
+      case 6:  return 'Time Commitment'; // Updated title
       case 7:  return 'Focus Areas';
       case 8:  return 'Create your Roadmap';
-      case 9:  return 'Create Goals';
+      case 9:  return 'Create Goals'; // Title might need adjustment based on Step 8 choice
       case 10: return 'Account Setup';
       case 11: return 'How did you find us?';
       case 12: return 'Quick Rating';
@@ -115,21 +149,33 @@ export default function OnboardingIndex() {
 
   /* --------------- step renderer ---------------------------- */
   const renderStep = () => {
+    const stepProps = {
+      // Use functional update form for setOnboardingData
+      setData: (updater: (prev: OnboardingData) => OnboardingData) => setOnboardingData(updater),
+      data: onboardingData,
+      setValid: setStepValid,
+    };
+
     switch (step) {
-      case 1:  return <Step01_Welcome />;
-      case 2:  return <Step02_Age />;
-      case 3:  return <Step03_Gender />;
-      case 4:  return <Step04_LifeStatus />;
-      case 5:  return <Step05_Sleep />;
-      case 6:  return <Step06_TimeCommit />;
-      case 7:  return <Step07_FocusAreas />;
-      case 8:  return <Step08_RoadmapChoice />;
-      case 9:  return <Step09_GoalList />;
-      case 10: return <Step10_SignIn />;
-      case 11: return <Step11_FoundUs />;
-      case 12: return <Step12_Rating />;
-      case 13: return <Step13_Paywall />;
-      case 14: return <Step14_Done />;
+      case 1:  return <Step01_Welcome {...stepProps} />;
+      case 2:  return <Step02_Age {...stepProps} />;
+      case 3:  return <Step03_Gender {...stepProps} />;
+      case 4:  return <Step04_LifeStatus {...stepProps} />;
+      case 5:  return <Step05_Sleep {...stepProps} />;
+      case 6:  return <Step06_TimeCommit {...stepProps} />;
+      case 7:  return <Step07_FocusAreas {...stepProps} />;
+      case 8:  return <Step08_RoadmapChoice {...stepProps} />;
+      case 9:
+        // Conditional rendering for Step 9 based on Step 8's choice
+        if (onboardingData.roadmapChoice === 'Template') {
+          return <Step09_Template {...stepProps} />;
+        }
+        return <Step09_GoalList {...stepProps} />; // Default or 'Create' choice
+      case 10: return <Step10_SignIn {...stepProps} />;
+      case 11: return <Step11_FoundUs {...stepProps} />;
+      case 12: return <Step12_Rating {...stepProps} />;
+      case 13: return <Step13_Paywall {...stepProps} />;
+      case 14: return <Step14_Done {...stepProps} />;
       default: return null;
     }
   };
@@ -161,7 +207,7 @@ export default function OnboardingIndex() {
           <NavRow
             isStepOne={step === 1}
             isLast={step === TOTAL_STEPS}
-            nextDisabled={false /* TODO validation */}
+            nextDisabled={!isStepValid} // Use validation state
             onBack={handleBack}
             onNext={handleNext}
           />
