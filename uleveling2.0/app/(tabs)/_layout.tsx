@@ -1,73 +1,143 @@
-import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, Dimensions } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  interpolate,
+  Easing,
+  runOnJS,
+} from 'react-native-reanimated';
+import TabBar from '@/components/common/TabBar';
+import { verticalScale as vs, moderateScale } from '@/constants/scaling';
 
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import Dashboard     from '@/app/(tabs)/dashboard';
+import Roadmap       from '@/app/(tabs)/roadmap';
+import Stats         from '@/app/(tabs)/stats';
+import Leaderboard   from '@/app/(tabs)/leaderboard';
+import Achievements  from '@/app/(tabs)/achievements';
+import { UserProvider } from '@/contexts/UserContext';
 
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
-}
+const TAB_HEIGHT = vs(620);
+const DUR = 170;
+const { width } = Dimensions.get('window');
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+const routes = {
+  dashboard   : Dashboard,
+  roadmap     : Roadmap,
+  stats       : Stats,
+  leaderboard : Leaderboard,
+  achievements: Achievements,
+} as const;
+export type TabKey = keyof typeof routes;
+
+type AnimationState = 'idle' | 'closing' | 'opening';
+
+export default function TabsLayout() {
+  const [key, setKey] = useState<TabKey>('dashboard');
+  const [targetKey, setTargetKey] = useState<TabKey | null>(null);
+  const [animationState, setAnimationState] = useState<AnimationState>('idle');
+  const prog = useSharedValue(1);
+  const isInitialMount = useRef(true);
+
+  console.log(`-- TabsLayout Render -- Key: ${key}, Target: ${targetKey}, State: ${animationState}`);
+
+  useEffect(() => {
+    console.log(`Effect [animationState] triggered. State: ${animationState}`);
+    if (animationState === 'closing') {
+      console.log('  -> State=closing: Starting close animation (prog 1->0)');
+      prog.value = withTiming(0, { duration: DUR, easing: Easing.in(Easing.cubic) }, (finished) => {
+        console.log(`    -> Close Animation Finished: ${finished}`);
+        if (finished && targetKey) {
+          console.log(`       -> Setting key=${targetKey}, state=opening`);
+          runOnJS(setKey)(targetKey);
+          runOnJS(setTargetKey)(null);
+          runOnJS(setAnimationState)('opening');
+        }
+      });
+    } else if (animationState === 'opening') {
+      console.log('  -> State=opening: Starting open animation (prog 0->1)');
+      prog.value = withTiming(1, { duration: DUR, easing: Easing.out(Easing.cubic) }, (finished) => {
+        console.log(`    -> Open Animation Finished: ${finished}`);
+        if (finished) {
+          console.log('       -> Setting state=idle');
+          runOnJS(setAnimationState)('idle');
+        }
+      });
+    }
+  }, [animationState, targetKey, prog]);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+    } else {
+        // Optional: Handle any logic needed after initial mount if state starts other than idle
+        // Currently starts idle, so this isn't strictly needed
+    }
+  }, []);
+
+  const change = (next: TabKey) => {
+    console.log(`Change Function Called: next=${next}, currentKey=${key}, state=${animationState}`);
+    if (key !== next && animationState === 'idle') {
+      console.log(`  -> Starting change from ${key} to ${next}`);
+      setTargetKey(next);
+      setAnimationState('closing');
+    } else {
+      console.log('  -> Change ignored (already target key or animating)');
+    }
+  };
+
+  const Current = routes[key];
+
+  const animatedPanelStyle = useAnimatedStyle(() => {
+    const height = interpolate(prog.value, [0, 1], [0, TAB_HEIGHT]);
+    const opacity = interpolate(prog.value, [0, 0.5, 1], [0, 0.5, 1]);
+    return { height, opacity };
+  });
+
+  const shouldRenderContent = animationState === 'idle' || animationState === 'opening';
+
+  if (shouldRenderContent) {
+    console.log(`+++ Preparing to render <Current /> component for key: ${key} (State: ${animationState}) +++`);
+  }
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}>
-      <Tabs.Screen
-        name="stats"
-        options={{
-          title: 'Stats',
-          tabBarIcon: ({ color }) => <TabBarIcon name="bar-chart" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color }) => <TabBarIcon name="tachometer" color={color} />,
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={25}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="roadmap"
-        options={{
-          title: 'Roadmap',
-          tabBarIcon: ({ color }) => <TabBarIcon name="map-signs" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <TabBarIcon name="cog" color={color} />,
-        }}
-      />
-    </Tabs>
+    <View style={styles.root}>
+      <UserProvider>
+        <View style={{ flex: 1 }} />
+
+        <Animated.View style={[styles.panel, animatedPanelStyle]}>
+          {shouldRenderContent && (
+            <View style={styles.inner}>
+              <Current />
+            </View>
+          )}
+        </Animated.View>
+
+        <TabBar active={key} onChange={change} disabled={animationState !== 'idle'} />
+      </UserProvider>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  panel: {
+    width: width * 0.9,
+    alignSelf: 'center',
+    overflow: 'hidden',
+    backgroundColor: '#0d1b2a',
+    borderWidth: moderateScale(4),
+    borderColor: '#00ffff',
+    marginBottom: vs(10),
+  },
+  inner: {
+    paddingHorizontal: moderateScale(12),
+    paddingVertical: vs(10),
+    alignItems: 'center',
+    width: '100%',
+  },
+}); 

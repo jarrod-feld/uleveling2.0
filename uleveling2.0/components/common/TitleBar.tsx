@@ -23,26 +23,25 @@ const styles = StyleSheet.create({
   box: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: moderateScale(2),
+    borderWidth: moderateScale(3),
     borderColor: '#ffffff',
     paddingVertical: verticalScale(6),
     paddingHorizontal: scale(18),
-    borderRadius: moderateScale(4),
-    marginBottom: verticalScale(25),
+   
     shadowColor: '#ffffff',
     shadowOpacity: 0.9,
     shadowRadius: moderateScale(8),
     shadowOffset: { width: 0, height: 0 },
-    marginTop: verticalScale(30),   // ← tweak this number to taste
+    marginTop: verticalScale(25),   // ← tweak this number to taste
 
     /* subtle glow */
   },
   txt: {
     color: '#ffffff',
-    fontSize: moderateScale(20, 0.4),
+    fontSize: moderateScale(18, 0.4),
     fontWeight: 'bold',
     letterSpacing: 1,
-    fontFamily: 'PublicSans-Bold',
+    fontFamily: 'PressStart2P',
     textShadowColor: '#26c6ff',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,

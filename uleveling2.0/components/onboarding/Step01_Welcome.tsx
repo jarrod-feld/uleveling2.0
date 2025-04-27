@@ -1,52 +1,54 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { verticalScale, moderateScale } from '@/constants/scaling';
-import type { StepComponentProps } from './types'; // Use type import
+import { moderateScale, scale, verticalScale } from '@/constants/scaling';
+import { OnboardingData } from '@/app/onboarding'; // Assuming OnboardingData is exported or moved
 
-// Use the props interface
-export default function Step01_Welcome({ setValid }: StepComponentProps) {
-  // This step is always valid, so set validation true on mount
+// Exported height for this step's content
+export const STEP_CONTENT_HEIGHT = verticalScale(180);
+
+// Define StepProps locally or import if defined elsewhere
+interface StepProps {
+  data: OnboardingData;
+  setData: (updater: (prev: OnboardingData) => OnboardingData) => void;
+  setValid: (isValid: boolean) => void;
+}
+
+export default function Step01_Welcome({ setValid }: StepProps) {
+  // This step is always valid
   useEffect(() => {
     setValid(true);
   }, [setValid]);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Congratulations!</Text>
-      <Text style={styles.text}>
-        You have been selected as a <Text style={styles.highlight}>'Player'</Text>.{'\n\n'}
-        Prepare for your journey by answering a few questions to tailor your experience.
+    <View style={styles.wrapper}>
+      <Text style={styles.txt}>
+        You have acquired the qualifications{'\n'}
+        to become the <Text style={styles.bold}>"Player"</Text>.{'\n'}
+        Will you accept?
       </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  wrapper: {
+    width: '90%',
     alignItems: 'center',
-    paddingBottom: verticalScale(20), // Add padding at the bottom for NavRow space
-    width: '100%', // Ensure container takes width for alignment
+    justifyContent: 'center',
+    paddingVertical: verticalScale(30),
   },
-  title: {
-    fontSize: moderateScale(24),
-    fontWeight: 'bold',
-    color: '#00ff00', // Highlight color
-    marginBottom: verticalScale(20), // Space before potential NavRow
-    fontFamily: 'PublicSans-Regular',
-    paddingHorizontal: moderateScale(10), // Prevent text touching edges
-    textAlign: 'center',
-  },
-  text: {
-    fontSize: moderateScale(16),
+  txt: {
     color: '#ffffff',
+    fontSize: moderateScale(12, 0.5),
     textAlign: 'center',
-    lineHeight: moderateScale(22),
-    marginBottom: verticalScale(20), // Space before potential NavRow
-    fontFamily: 'PublicSans-Regular',
+    lineHeight: verticalScale(20),
+    textShadowColor: '#26c6ff',
+    textShadowRadius: moderateScale(8),
+    textShadowOffset: { width: 0, height: 0 },
+    fontFamily: 'PressStart2P',
   },
-  highlight: {
-    color: '#00ff00', // Highlight color
-    fontWeight: 'bold',
-    fontFamily: 'PublicSans-Bold',
+  bold: {
+    color: '#00ffff',
+    fontFamily: 'PressStart2P',
   },
 });

@@ -1,125 +1,104 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { scale, verticalScale, moderateScale } from '@/constants/scaling'; // Assuming this path is correct
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, StyleSheet, Platform, Keyboard } from 'react-native';
+import { moderateScale, scale, verticalScale } from '@/constants/scaling';
+import { OnboardingData } from '@/app/onboarding'; // Import the exported interface
 
-// Define a shared interface for onboarding data (can be moved later)
-interface OnboardingData {
-    age?: number;
-    // ... other fields will be added here
-}
+// Exported height for this step's content
+export const STEP_CONTENT_HEIGHT = verticalScale(120);
 
+// Define StepProps locally or import if defined elsewhere
 interface StepProps {
-    onboardingData: OnboardingData;
-    setOnboardingData: (updateFn: (prevData: OnboardingData) => OnboardingData) => void;
-    // handleNext and handleBack are available but not directly used for validation logic here
-    // isValid will be derived in the parent component based on onboardingData.age
+  data: OnboardingData;
+  setData: (updater: (prev: OnboardingData) => OnboardingData) => void;
+  setValid: (isValid: boolean) => void;
 }
 
 const MIN_AGE = 13;
-const MAX_AGE = 99;
+const MAX_AGE = 100;
 
-export default function Step02_Age({ onboardingData, setOnboardingData }: StepProps) {
-    const [selectedAge, setSelectedAge] = useState<number | undefined>(onboardingData.age);
+export default function Step02_Age({ data, setData, setValid }: StepProps) {
+  const [ageInput, setAgeInput] = useState<string>(data.age?.toString() || '');
 
-    // Generate age options
-    const ageOptions = Array.from({ length: MAX_AGE - MIN_AGE + 1 }, (_, i) => MIN_AGE + i);
+  const validateAndSetAge = (text: string) => {
+    setAgeInput(text);
+    const num = parseInt(text, 10);
+    const isValid = !isNaN(num) && num >= MIN_AGE && num <= MAX_AGE;
 
-    const handleSelectAge = (age: number) => {
-        setSelectedAge(age);
-        setOnboardingData(prevData => ({ ...prevData, age: age }));
-    };
+    if (isValid) {
+      setData(prev => ({ ...prev, age: num }));
+    } else {
+      // Clear age in data if input becomes invalid
+      setData(prev => ({ ...prev, age: undefined }));
+    }
+    setValid(isValid);
+  };
 
-    // TODO: Implement a more visually appealing wheel/picker if possible
-    // For now, using a simple scrollable list
+  // Set initial validity
+  useEffect(() => {
+    const initialAge = data.age;
+    const isValid = typeof initialAge === 'number' && initialAge >= MIN_AGE && initialAge <= MAX_AGE;
+    setValid(isValid);
+    // If there's valid initial data, ensure input reflects it
+    if (isValid && ageInput !== initialAge.toString()) {
+        setAgeInput(initialAge.toString());
+    }
+    // Only run on initial mount for this step
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Select Your Age</Text>
-            <View style={styles.pickerContainer}>
-                <ScrollView
-                    showsVerticalScrollIndicator={false}
-                    // Add snapping potentially? Needs more investigation for web compatibility.
-                    style={styles.scrollView}
-                    contentContainerStyle={styles.scrollViewContent}
-                >
-                    {ageOptions.map((age) => (
-                        <TouchableOpacity
-                            key={age}
-                            onPress={() => handleSelectAge(age)}
-                            style={[
-                                styles.ageOption,
-                                selectedAge === age && styles.selectedAgeOption,
-                            ]}
-                        >
-                            <Text
-                                style={[
-                                    styles.ageText,
-                                    selectedAge === age && styles.selectedAgeText,
-                                ]}
-                            >
-                                {age}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </ScrollView>
-            </View>
-             {/* Add NavRow space placeholder - actual NavRow rendered by parent */}
-             <View style={styles.navPlaceholder} />
-        </View>
-    );
+  const handleDonePress = () => {
+    Keyboard.dismiss(); // Dismiss keyboard on pressing Done/Return
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.label}>Player Age:</Text>
+      <TextInput
+        style={styles.input}
+        value={ageInput}
+        onChangeText={validateAndSetAge}
+        keyboardType="number-pad"
+        maxLength={3}
+        placeholder="??"
+        placeholderTextColor="#555555"
+        selectionColor="#00FF00" // Neon green cursor
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1, // Occupy available space within SoloPopup
-        alignItems: 'center',
-        paddingHorizontal: moderateScale(20),
-        paddingVertical: verticalScale(20), // Inner padding PAD_V
-    },
-    title: {
-        fontSize: moderateScale(20),
-        fontWeight: 'bold',
-        color: '#ffffff',
-        marginBottom: verticalScale(25),
-        fontFamily: 'PublicSans-Bold', // Assuming bold weight exists
-    },
-    pickerContainer: {
-        height: verticalScale(200), // Fixed height for the picker area
-        width: '50%', // Adjust width as needed
-        borderWidth: 1,
-        borderColor: '#555555', // Example border
-        borderRadius: moderateScale(10),
-        overflow: 'hidden', // Ensure scroll content stays within bounds
-        marginBottom: verticalScale(20),
-    },
-    scrollView: {
-        flex: 1,
-    },
-    scrollViewContent: {
-        alignItems: 'center', // Center items horizontally
-        paddingVertical: verticalScale(80), // Padding to center initial view
-    },
-    ageOption: {
-        paddingVertical: verticalScale(8),
-        width: '100%',
-        alignItems: 'center',
-    },
-    selectedAgeOption: {
-        // Add subtle background highlight if needed
-        // backgroundColor: 'rgba(0, 255, 0, 0.1)',
-    },
-    ageText: {
-        fontSize: moderateScale(22),
-        color: '#ffffff',
-        fontFamily: 'PublicSans-Regular',
-    },
-    selectedAgeText: {
-        color: '#00ff00', // Highlight selected age
-        fontWeight: 'bold',
-        fontFamily: 'PublicSans-Bold',
-    },
-    navPlaceholder: {
-         // Ensure there's space for NavRow, adjust height as needed
-         height: verticalScale(60),
-    },
+  container: {
+    alignItems: 'center',
+    paddingVertical: verticalScale(20),
+    width: '100%',
+    justifyContent: 'center', // Center content vertically
+    flex: 1 // Allow content to fill space given by parent
+  },
+  label: {
+    fontFamily: 'PressStart2P', // 8-bit font
+    fontSize: moderateScale(14, 0.5), // Adjusted size for 8-bit
+    color: '#FFFFFF',
+    textShadowColor: '#26c6ff',
+    textShadowRadius: moderateScale(8),
+    textShadowOffset: { width: 0, height: 0 },
+    marginBottom: verticalScale(15),
+    textAlign: 'center',
+  },
+  input: {
+    fontFamily: 'PressStart2P', // 8-bit font
+    fontSize: moderateScale(16, 0.5), // Adjusted size for 8-bit
+    color: '#00FF00', // Neon green text like selection
+    backgroundColor: '#000000', // Simple black background
+    borderWidth: moderateScale(2),
+    borderColor: '#00ffff', // Bright cyan border
+    // Removed borderRadius for blocky look
+    width: scale(80), // Adjust width as needed
+    height: verticalScale(40), // Adjust height as needed
+    textAlign: 'center',
+    paddingHorizontal: scale(5),
+    // Remove textShadow for input clarity
+    // Adjust vertical alignment if needed
+    paddingVertical: Platform.OS === 'ios' ? verticalScale(8) : verticalScale(4),
+  },
 }); 

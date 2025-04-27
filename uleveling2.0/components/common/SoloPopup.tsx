@@ -5,7 +5,7 @@
  *  • Drop-down opens in 150 ms
  */
 
-import React, { ReactNode, useEffect, useRef, useState } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
 import Modal from 'react-native-modal';
 import Animated, {
@@ -16,48 +16,31 @@ import Animated, {
   Easing,
   runOnJS,
 } from 'react-native-reanimated';
-import { scale, verticalScale, moderateScale } from '@/constants/scaling';
+import { verticalScale, moderateScale } from '@/constants/scaling';
 
 const DUR    = 150;                   // fast tween
-const PAD_V  = verticalScale(10);
 const { width } = Dimensions.get('window');
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onClosed?: () => void;
-  minHeight?: number;
+  requiredHeight: number;
   children: ReactNode;
+  disableBackdropClose?: boolean;
 }
 
 export default function SoloPopup({
   visible,
   onClose,
   onClosed,
-  minHeight = verticalScale(320),
+  requiredHeight,
   children,
+  disableBackdropClose = false,
 }: Props) {
   const [mounted, setMounted] = useState(visible);
 
-  /* height of interior panel (no borders) */
-  const panelH = useSharedValue(minHeight);
-  const prog   = useSharedValue(0);
-
-  /* run onLayout only once per step to avoid post-open re-measuring */
-  const measured = useRef(false);
-
-  const onLayout = (e: any) => {
-    if (measured.current) return;              // already measured
-    measured.current = true;
-    const h = e.nativeEvent.layout.height;
-    const target = Math.max(minHeight, h + PAD_V * 2);
-    panelH.value = target;
-  };
-
-  /* open / close lifecycle */
-  useEffect(() => {
-    measured.current = false;                  // reset for next step
-  }, [children]);                              // new step children mounted
+  const prog = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
@@ -75,12 +58,10 @@ export default function SoloPopup({
         },
       );
     }
-  }, [visible]);
+  }, [visible, onClosed]);
 
-  /* Animated style for the panel (height, opacity) */
   const animatedPanelStyle = useAnimatedStyle(() => ({
-    height : interpolate(prog.value, [0, 1], [0, panelH.value]),
-    opacity: prog.value,
+    height: interpolate(prog.value, [0, 1], [0, requiredHeight]),
   }));
 
   if (!mounted) return null;
@@ -89,14 +70,16 @@ export default function SoloPopup({
     <Modal
       isVisible={mounted}
       backdropOpacity={0.75}
-      onBackdropPress={onClose}
+      onBackdropPress={disableBackdropClose ? undefined : onClose}
       style={styles.modal}
+      animationIn="fadeIn"
+      animationOut="fadeOut"
+      animationInTiming={DUR}
+      animationOutTiming={DUR}
     >
       <View style={{ width: width * 0.85, alignItems: 'center' }}>
-        {/* Animated container with background and border */}
         <Animated.View style={[styles.panel, animatedPanelStyle]}>
-          {/* Content area with layout measurement */}
-          <View onLayout={onLayout} style={styles.inner}>
+          <View style={styles.inner}>
             {children}
           </View>
         </Animated.View>
@@ -111,15 +94,14 @@ const styles = StyleSheet.create({
   panel : {
     width: '100%',
     overflow: 'hidden',
-    backgroundColor: '#555555',
-    borderRadius: moderateScale(10),
-    borderWidth: moderateScale(2),
-    borderColor: '#FFFFFF',
+    backgroundColor: '#0d1b2a', // Dark blue background
+    borderWidth: moderateScale(4), // Thicker border
+    borderColor: '#00ffff', // Bright cyan border
   },
   inner : {
-    paddingHorizontal: scale(12),
-    paddingVertical  : PAD_V,
+    paddingHorizontal: moderateScale(12),
     alignItems: 'center',
     width: '100%',
+    flex: 1,
   },
-});
+}); 

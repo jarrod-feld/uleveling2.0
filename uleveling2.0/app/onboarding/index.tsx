@@ -4,7 +4,7 @@
  * the Solo-Leveling popup.  No flash, even at DUR = 150 ms.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -13,131 +13,170 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Asset } from 'expo-asset';          /* ← NEW */
+import { Asset } from 'expo-asset';
 import { scale, verticalScale, moderateScale } from '@/constants/scaling';
+// Remove context/type imports
+// import { OnboardingProvider } from '@/context/OnboardingContext';
+// import { StepProps } from '@/types/onboarding';
 
 import SoloPopup from '@/components/common/SoloPopup';
 import TitleBar  from '@/components/common/TitleBar';
 import NavRow    from '@/components/common/NavRow';
 
 /* ---------- step components ---------- */
-import Step01_Welcome        from '@/components/onboarding/Step01_Welcome';
-import Step02_Age            from '@/components/onboarding/Step02_Age';
-import Step03_Gender         from '@/components/onboarding/Step03_Gender';
-import Step04_LifeStatus     from '@/components/onboarding/Step04_LifeStatus';
-import Step05_Sleep          from '@/components/onboarding/Step05_Sleep';
-import Step06_TimeCommit     from '@/components/onboarding/Step06_TimeCommit';
-import Step07_FocusAreas     from '@/components/onboarding/Step07_FocusAreas';
-import Step08_RoadmapChoice  from '@/components/onboarding/Step08_RoadmapChoice';
-import Step09_GoalList       from '@/components/onboarding/Step09_GoalList';
-import Step09_Template       from '@/components/onboarding/Step09_Template';
-import Step10_SignIn         from '@/components/onboarding/Step10_SignIn';
-import Step11_FoundUs        from '@/components/onboarding/Step11_FoundUs';
-import Step12_Rating         from '@/components/onboarding/Step12_Rating';
-import Step13_Paywall        from '@/components/onboarding/Step13_Paywall';
-import Step14_Done           from '@/components/onboarding/Step14_Done';
+import Step00_Username, { STEP_CONTENT_HEIGHT as STEP_00_HEIGHT } from '@/components/onboarding/Step00_Username';
+import Step01_Welcome, { STEP_CONTENT_HEIGHT as STEP_01_HEIGHT } from '@/components/onboarding/Step01_Welcome';
+import Step02_Age, { STEP_CONTENT_HEIGHT as STEP_02_HEIGHT } from '@/components/onboarding/Step02_Age';
+import Step03_Gender, { STEP_CONTENT_HEIGHT as STEP_03_HEIGHT } from '@/components/onboarding/Step03_Gender';
+import Step04_LifeStatus, { STEP_CONTENT_HEIGHT as STEP_04_HEIGHT } from '@/components/onboarding/Step04_LifeStatus';
+import Step05_Sleep, { STEP_CONTENT_HEIGHT as STEP_05_HEIGHT } from '@/components/onboarding/Step05_Sleep';
+import Step06_TimeCommit, { STEP_CONTENT_HEIGHT as STEP_06_HEIGHT } from '@/components/onboarding/Step06_TimeCommit';
+import Step07_FocusAreas, { STEP_CONTENT_HEIGHT as STEP_07_HEIGHT } from '@/components/onboarding/Step07_FocusAreas';
+import Step08_RoadmapChoice, { STEP_CONTENT_HEIGHT as STEP_08_HEIGHT } from '@/components/onboarding/Step08_RoadmapChoice';
+import Step09_GoalList, { STEP_CONTENT_HEIGHT as STEP_09A_HEIGHT } from '@/components/onboarding/Step09_GoalList';
+import Step09_Template, { STEP_CONTENT_HEIGHT as STEP_09B_HEIGHT } from '@/components/onboarding/Step09_Template';
+import Step10_SignIn, { STEP_CONTENT_HEIGHT as STEP_10_HEIGHT } from '@/components/onboarding/Step10_SignIn';
+import Step11_FoundUs, { STEP_CONTENT_HEIGHT as STEP_11_HEIGHT } from '@/components/onboarding/Step11_FoundUs';
+import Step12_Rating, { STEP_CONTENT_HEIGHT as STEP_12_HEIGHT } from '@/components/onboarding/Step12_Rating';
+import Step13_Paywall, { STEP_CONTENT_HEIGHT as STEP_13_HEIGHT } from '@/components/onboarding/Step13_Paywall';
+import Step14_Done, { STEP_CONTENT_HEIGHT as STEP_14_HEIGHT } from '@/components/onboarding/Step14_Done';
 
-const TOTAL_STEPS = 14;            // 1-14 inclusive
+const TOTAL_STEPS = 15;            // 0-14 inclusive
 
-/* --- Types --- */
-// TODO: Define more specific types as components are built
-interface OnboardingData {
+// Height constants
+const TITLE_BAR_HEIGHT = verticalScale(45); // Estimated height
+const NAV_ROW_HEIGHT   = verticalScale(60); // Estimated height
+const VERTICAL_PADDING = verticalScale(10); // Top + bottom padding within popup inner container
+
+// Restore local OnboardingData interface and export it
+export interface OnboardingData {
+  name?: string;
   age?: number;
   gender?: 'Male' | 'Female' | 'Other';
   lifeStatus?: {
     working?: boolean;
     school?: boolean;
   };
-  sleepWake?: string; // Example: "10:00 PM"
-  sleepBed?: string; // Example: "6:00 AM"
+  sleepWake?: string;
+  sleepBed?: string;
   hoursWork?: number;
   hoursSchool?: number;
-  focusAreas?: { [key: string]: boolean }; // e.g., { 'Dating': true, 'OtherText': 'xyz' }
+  focusAreas?: { [key: string]: boolean };
   focusAreasOtherText?: string;
   roadmapChoice?: 'Create' | 'Template';
-  goals?: { description: string; timeframe: string }[]; // Step 9a
-  template?: string; // Step 9b
-  templateIntensity?: 'Low' | 'Med' | 'High'; // Step 9b
-  foundUs?: string; // e.g., 'Instagram', 'OtherText'
+  goals?: { description: string; timeframe: string }[];
+  template?: string;
+  templateIntensity?: 'Low' | 'Med' | 'High';
+  foundUs?: string;
   foundUsOtherText?: string;
-  rating?: number; // 1-5
+  rating?: number;
 }
+
+// Define StepProps interface shared by onboarding step components
+interface StepProps { /* ... existing fields ... */ }
 
 /* ------------------------------------------------------------------ */
 
+// Remove Provider wrapper export
+// export default function OnboardingIndexWrapped() { ... }
+
+// Restore original export
 export default function OnboardingIndex() {
   const router = useRouter();
 
-  /* ------------ preload GIF + borders (blocking) ------------ */
+  /* ------------ preload assets ------------ */
   const [assetsReady, setAssetsReady] = useState(false);
 
   useEffect(() => {
     (async () => {
-      await Asset.loadAsync([
-        require('@/assets/img/techno-background.gif'),
-        require('@/assets/img/techno-border-top.png'),
-        require('@/assets/img/techno-border-bottom.png'),
-      ]);
+      // Keep asset preloading if needed for 8-bit style (e.g., background image)
+      // await Asset.loadAsync([...]);
       setAssetsReady(true);
-      // Assume step 1 is initially valid
-      setStepValid(true);
+      // Step 0 (Welcome) is now always valid, Step 1 (Username) starts invalid
+      setStepValid(true); // Step 0 is now Welcome, which is valid
     })();
   }, []);
 
   /* ------------ onboarding & popup state -------------------- */
-  const [step,       setStep]       = useState<number>(1);
+  const [step,       setStep]       = useState<number>(0);
   const [queuedStep, setQueuedStep] = useState<number | null>(null);
   const [popupVisible, setPopupVisible] = useState(true);
   const [onboardingData, setOnboardingData] = useState<OnboardingData>({});
-  const [isStepValid, setStepValid] = useState<boolean>(false); // Default to false until step validates
+  // Initial validity: Step 0 (Welcome) is true, subsequent steps depend on their logic
+  const [isStepValid, setStepValid] = useState<boolean>(true); // Step 0 is now valid
+
+  // --- Stabilize setData callback ---
+  const stableSetData = useCallback(
+      (updater: (prev: OnboardingData) => OnboardingData) => {
+          setOnboardingData(updater);
+      },
+      [setOnboardingData] // Dependency: the state setter function from useState
+  );
+  // ----------------------------------
+
+  // Remove TODO for Reanimated hook if not needed now
 
   const openPopup  = () => setPopupVisible(true);
   const closePopup = () => setPopupVisible(false);
 
   /* --------------- nav handlers ----------------------------- */
   const handleBack = () => {
-    setQueuedStep(Math.max(1, step - 1));
+    setQueuedStep(Math.max(0, step - 1));
     closePopup();
   };
 
   const handleNext = () => {
-    if (step === TOTAL_STEPS) {
-      setQueuedStep(null); // Prevent reopening popup
-      closePopup(); // Close normally, onClosed will navigate
-      return;
+    if (!isStepValid) {
+        return;
     }
-    let nextStep = step + 1;
-    // Special logic for step 9 based on step 8 choice?
-    // Or handle rendering Step09_GoalList vs Step09_Template in renderStep
-    setQueuedStep(nextStep);
-    closePopup();
+
+    // Check if it's the final step (index is TOTAL_STEPS - 1)
+    if (step === TOTAL_STEPS - 1) {
+      console.log("[OnboardingIndex] Reached final step (14). Closing popup to trigger redirect.");
+      setQueuedStep(null); // Ensure no step is queued
+      closePopup(); // Close the popup, handleClosed will trigger the redirect
+    } else {
+      // Otherwise, proceed to the next step as usual
+      let nextStep = step + 1;
+      setQueuedStep(nextStep);
+      closePopup();
+    }
   };
 
   /* after collapse tween */
   const handleClosed = () => {
     if (queuedStep !== null) {
-      setStep(queuedStep);
-      setStepValid(false); // Reset validation for the new step
+      // Logic for transitioning between steps
+      const newStep = queuedStep;
+      setStep(newStep);
       setQueuedStep(null);
+      setStepValid(newStep === 0); // Welcome (Step 0) is always valid
       openPopup();
-    } else if (step === TOTAL_STEPS) {
-      // Only navigate when the final step (14) is closed *without* a queued step
-      router.replace('/(tabs)/dashboard' as any); // Cast to any to bypass strict type check
+    } else if (step === TOTAL_STEPS - 1) {
+      // This condition is now met after closing from Step 14
+      // because handleNext set queuedStep to null
+      console.log("[OnboardingIndex] Popup closed on final step (14), redirecting to dashboard.");
+      router.replace('/(tabs)/dashboard' as any);
     }
+    // Add an else case for safety, though it shouldn't be reached in normal flow
+    // else {
+    //   console.warn("[OnboardingIndex] handleClosed called unexpectedly with null queuedStep and not on final step.");
+    // }
   };
 
-  /* --------------- title helper ----------------------------- */
+  /* --------------- title helper (keep updated titles) ------- */
   const getTitle = (): string => {
     switch (step) {
-      case 1:  return 'Notification';
-      case 2:  return 'What is your age?';
-      case 3:  return 'What is your Gender?';
-      case 4:  return 'Where are you in life?';
+      case 0:  return 'Alert'; // Step 0 is now Welcome
+      case 1:  return 'Identify Yourself'; // Step 1 is now Username
+      case 2:  return 'Player Age';
+      case 3:  return 'Player Gender';
+      case 4:  return 'Current Status';
       case 5:  return 'Sleep Schedule';
-      case 6:  return 'Time Commitment'; // Updated title
+      case 6:  return 'Time Commitment';
       case 7:  return 'Focus Areas';
       case 8:  return 'Create your Roadmap';
-      case 9:  return 'Create Goals'; // Title might need adjustment based on Step 8 choice
+      case 9:  return 'Define Your Goals';
       case 10: return 'Account Setup';
       case 11: return 'How did you find us?';
       case 12: return 'Quick Rating';
@@ -147,17 +186,52 @@ export default function OnboardingIndex() {
     }
   };
 
+  /* --------------- height calculation --------------- */
+  function getCurrentStepContentHeight(): number {
+    switch (step) {
+      case 0:  return STEP_01_HEIGHT; // Step 0 uses Welcome height
+      case 1:  return STEP_00_HEIGHT; // Step 1 uses Username height
+      case 2:  return STEP_02_HEIGHT;
+      case 3:  return STEP_03_HEIGHT;
+      case 4:  return STEP_04_HEIGHT;
+      case 5:  return STEP_05_HEIGHT;
+      case 6:  return STEP_06_HEIGHT;
+      case 7:  return STEP_07_HEIGHT;
+      case 8:  return STEP_08_HEIGHT;
+      case 9:
+        return onboardingData.roadmapChoice === 'Template' ? STEP_09B_HEIGHT : STEP_09A_HEIGHT;
+      case 10: return STEP_10_HEIGHT;
+      case 11: return STEP_11_HEIGHT;
+      case 12: return STEP_12_HEIGHT;
+      case 13: return STEP_13_HEIGHT;
+      case 14: return STEP_14_HEIGHT;
+      default: return verticalScale(200); // Fallback height
+    }
+  }
+
+  const currentStepContentHeight = getCurrentStepContentHeight();
+  const requiredPopupHeight = TITLE_BAR_HEIGHT + currentStepContentHeight + NAV_ROW_HEIGHT + VERTICAL_PADDING;
+
+  // --- Debug Log ---
+  console.log(`[OnboardingIndex] Step: ${step}`);
+  if (step === 9) {
+    console.log(`  Roadmap Choice: ${onboardingData.roadmapChoice}`);
+  }
+  console.log(`  currentStepContentHeight: ${currentStepContentHeight}`);
+  console.log(`  requiredPopupHeight: ${requiredPopupHeight} (Title: ${TITLE_BAR_HEIGHT}, Content: ${currentStepContentHeight}, Nav: ${NAV_ROW_HEIGHT}, Padding: ${VERTICAL_PADDING})`);
+  // ---------------
+
   /* --------------- step renderer ---------------------------- */
   const renderStep = () => {
     const stepProps = {
-      // Use functional update form for setOnboardingData
-      setData: (updater: (prev: OnboardingData) => OnboardingData) => setOnboardingData(updater),
       data: onboardingData,
+      setData: stableSetData,
       setValid: setStepValid,
     };
 
     switch (step) {
-      case 1:  return <Step01_Welcome {...stepProps} />;
+      case 0:  return <Step01_Welcome {...stepProps} />; // Step 0 renders Welcome
+      case 1:  return <Step00_Username {...stepProps} />; // Step 1 renders Username
       case 2:  return <Step02_Age {...stepProps} />;
       case 3:  return <Step03_Gender {...stepProps} />;
       case 4:  return <Step04_LifeStatus {...stepProps} />;
@@ -166,11 +240,10 @@ export default function OnboardingIndex() {
       case 7:  return <Step07_FocusAreas {...stepProps} />;
       case 8:  return <Step08_RoadmapChoice {...stepProps} />;
       case 9:
-        // Conditional rendering for Step 9 based on Step 8's choice
         if (onboardingData.roadmapChoice === 'Template') {
           return <Step09_Template {...stepProps} />;
         }
-        return <Step09_GoalList {...stepProps} />; // Default or 'Create' choice
+        return <Step09_GoalList {...stepProps} />;
       case 10: return <Step10_SignIn {...stepProps} />;
       case 11: return <Step11_FoundUs {...stepProps} />;
       case 12: return <Step12_Rating {...stepProps} />;
@@ -182,7 +255,6 @@ export default function OnboardingIndex() {
 
   /* ----------- UI ----------- */
   if (!assetsReady) {
-    /* optional: splash while caching images */
     return (
       <View style={[styles.bg, { justifyContent: 'center' }]}>
         <ActivityIndicator size="large" color="#00ffff" />
@@ -201,13 +273,19 @@ export default function OnboardingIndex() {
           visible={popupVisible}
           onClose={closePopup}
           onClosed={handleClosed}
+          disableBackdropClose={true}
+          requiredHeight={requiredPopupHeight}
+          // Keep animation props for 8-bit style (fadeIn/Out)
+          // animationIn="fadeIn" 
+          // animationOut="fadeOut"
         >
+          {/* Remove TODO for ScrollView if not part of 8-bit style */}
           <TitleBar text={getTitle()} />
           {renderStep()}
           <NavRow
-            isStepOne={step === 1}
-            isLast={step === TOTAL_STEPS}
-            nextDisabled={!isStepValid} // Use validation state
+            isStepOne={step === 0}
+            isLast={false}
+            nextDisabled={!isStepValid}
             onBack={handleBack}
             onNext={handleNext}
           />
