@@ -43,7 +43,7 @@ export default function TabBar({ active, onChange, disabled }:Props){
             }}
             disabled={disabled}
           >
-            <Icon size={ms(22)} color={active === k ? '#26a8ff' : '#fff'} weight={active === k ? 'fill' : 'regular'} />
+            <Icon size={ms(30)} color={active === k ? '#26a8ff' : '#fff'} weight={active === k ? 'fill' : 'regular'} />
           </TouchableOpacity>
         );
       })}
@@ -55,12 +55,15 @@ const styles=StyleSheet.create({
     flexDirection:'row', 
     borderWidth:ms(3), 
     borderColor:'#fff', 
-    margin:ms(20), 
+    marginBottom:ms(40), 
+    marginHorizontal:ms(20),
+    marginTop:ms(10),
     backgroundColor:'#000',
     
     
   },
-  btn:{ flex:1, 
+  btn:{ 
+    flex:1, 
     alignItems:'center', 
     justifyContent:'center',
     paddingVertical:ms(10) },

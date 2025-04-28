@@ -7,6 +7,7 @@ interface NotificationContextType {
   notifications: NotificationItem[];
   addStatNotification: (statLabel: string, amount: number) => void;
   addQuestNotification: (questStatus: QuestStatus, questTitle: string) => void;
+  addAchievementNotification: (achievementTitle: string) => void;
   clearNotifications: () => void;
 }
 
@@ -27,6 +28,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     notifications: notificationService.notifications,
     addStatNotification: notificationService.addStatNotification,
     addQuestNotification: notificationService.addQuestNotification,
+    addAchievementNotification: notificationService.addAchievementNotification,
     clearNotifications: notificationService.clearNotifications,
   };
 

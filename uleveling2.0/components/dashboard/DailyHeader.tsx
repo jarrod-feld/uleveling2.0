@@ -13,7 +13,7 @@ export default function DailyHeader() {
       <GoalsTitle />
       <Text style={styles.warn}>
         WARNING: Failure to complete a goal will result in a penalty.{ '\n'}
-        Skip a goal to avoid penalties to stats.
+        Skip a goal to avoid penalty to Discipline Stat.
       </Text>
     </View>
   );

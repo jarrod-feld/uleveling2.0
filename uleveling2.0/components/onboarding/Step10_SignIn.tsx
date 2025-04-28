@@ -12,7 +12,7 @@ import {
 } from 'expo-apple-authentication';
 
 // Exported height for this step's content
-export const STEP_CONTENT_HEIGHT = verticalScale(260);
+export const STEP_CONTENT_HEIGHT = verticalScale(320);
 
 // Define StepProps locally
 interface StepProps {
@@ -32,33 +32,42 @@ export default function Step10_SignIn({ data, setData, setValid }: StepProps) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSignInPress = async (method: 'Apple' | 'Google') => {
+  const handleSignInPress = async (method: 'Apple' | 'Google' | 'Anonymous') => {
     if (isAuthenticating || isSignInAttempted) return;
 
     setIsAuthenticating(true);
     setIsSignInAttempted(true);
 
     try {
-      let result: { user: any; session: any; error: Error | null } | null = null;
+      let result: { error: Error | null } | null = null;
+      let sessionEstablished = false;
+
       if (method === 'Apple') {
-        result = await AuthService.signInWithApple();
+         const appleResult = await AuthService.signInWithApple();
+         result = { error: appleResult.error };
+         sessionEstablished = !appleResult.error; 
       } else if (method === 'Google') {
         console.log('Google button pressed - Skipping Sign-In for now.');
         setValid(true);
+        setIsAuthenticating(false);
+        setIsSignInAttempted(false);
         return;
+      } else if (method === 'Anonymous') {
+        result = await AuthService.signInAnonymously();
+        sessionEstablished = !result.error;
       }
 
       if (result?.error) {
         if (result.error.message !== 'Sign-in cancelled.') {
-            Alert.alert("Authentication Error", result.error.message);
+          Alert.alert("Authentication Error", result.error.message);
         }
         setValid(false);
         setIsSignInAttempted(false);
-      } else if (result?.session || result?.user) {
+      } else if (sessionEstablished) {
         Alert.alert("Success", "Authentication successful!");
         setValid(true);
       } else {
-          console.log('[Step10_SignIn] Sign-in attempt finished with no error/session/user.')
+          console.log(`[Step10_SignIn] ${method} Sign-in attempt finished with no error but no confirmed session yet.`);
           setValid(false);
           setIsSignInAttempted(false);
       }
@@ -110,6 +119,20 @@ export default function Step10_SignIn({ data, setData, setValid }: StepProps) {
       >
         <Text style={[styles.buttonText, (isAuthenticating || isSignInAttempted) && styles.buttonTextDisabled]}>
             Sign In with Google
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.button,
+          styles.guestButton,
+          (isAuthenticating || isSignInAttempted) && styles.buttonDisabled
+        ]}
+        onPress={() => handleSignInPress('Anonymous')}
+        disabled={isAuthenticating || isSignInAttempted}
+      >
+        <Text style={[styles.buttonText, (isAuthenticating || isSignInAttempted) && styles.buttonTextDisabled]}>
+          Continue as Guest
         </Text>
       </TouchableOpacity>
     </View>
@@ -165,6 +188,10 @@ const styles = StyleSheet.create({
   },
   googleButton: {
     borderColor: '#00ffff',
+  },
+  guestButton: {
+      borderColor: '#888888',
+      marginBottom: verticalScale(15),
   },
   buttonText: {
     fontFamily: 'PressStart2P',

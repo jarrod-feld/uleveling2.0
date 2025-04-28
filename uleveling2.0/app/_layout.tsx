@@ -5,15 +5,35 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { UserProvider } from '@/contexts/UserContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
+import StatIncreasePopup from '@/components/common/StatIncreasePopup';
+import NewTitleNotificationPopup from '@/components/achievements/NewTitleNotificationPopup';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
+// Inner layout component
+function InnerLayout() {
+    return (
+        <>
+            <Stack
+                screenOptions={{
+                    headerShown: false,
+                }}
+            >
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            </Stack>
+
+            {/* Render popups - NewTitleNotificationPopup now handles its own visibility */}
+            <StatIncreasePopup />
+            <NewTitleNotificationPopup />
+        </>
+    );
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    'PressStart2P': require('../assets/fonts/PressStart2P-Regular.ttf'), // Restore 8-bit font
-    // 'PublicSans-Regular': require('../assets/fonts/PublicSans-Regular.ttf'),
-    // 'PublicSans-Bold': require('../assets/fonts/PublicSans-Bold.ttf'),
+    'PressStart2P': require('../assets/fonts/PressStart2P-Regular.ttf'),
   });
 
   useEffect(() => {
@@ -28,23 +48,17 @@ export default function RootLayout() {
     return null; // Or return a custom loading indicator
   }
 
-  // Render the navigation stack within the Gesture Handler Root View
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <NotificationProvider>
           <UserProvider>
-            <Stack
-              screenOptions={{
-                headerShown: false, // Hide the header globally
-              }}
-            >
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-            </Stack>
+            <InnerLayout />
           </UserProvider>
         </NotificationProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
+
+

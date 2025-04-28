@@ -291,12 +291,12 @@ const styles = StyleSheet.create({
   undoButtonContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: s(4),
+    padding: s(5),
     marginLeft: 0,
   },
   undoText: {
     ...baseFont,
     color: COLOR.grey,
-    fontSize: s(8),
+    fontSize: s(10),
   },
 }); 

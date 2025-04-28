@@ -79,6 +79,25 @@ class AuthService {
     }
   }
 
+  static async signInAnonymously(): Promise<{ user: User | null; session: Session | null; error: Error | null }> {
+    console.log('[AuthService] Attempting Supabase Anonymous Sign-In...');
+    try {
+      const { data: { user, session }, error } = await supabase.auth.signInAnonymously();
+
+      if (error) {
+        console.error('[AuthService] Supabase Anonymous Sign-In Error:', error.message);
+        return { user: null, session: null, error };
+      }
+
+      console.log('[AuthService] Supabase Anonymous Sign-In successful.');
+      return { user, session, error: null };
+
+    } catch (error: any) {
+      console.error('[AuthService] Unexpected Anonymous Sign-In Error:', error);
+      return { user: null, session: null, error: error instanceof Error ? error : new Error('An unexpected Anonymous Sign-In error occurred') };
+    }
+  }
+
   static async signOut(): Promise<{ error: Error | null }> {
     console.log('[AuthService] Signing out...');
     const { error } = await supabase.auth.signOut();

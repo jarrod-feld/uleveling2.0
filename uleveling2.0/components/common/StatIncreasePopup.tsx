@@ -17,17 +17,18 @@ const POPUP_DURATION = 5000; // How long the popup stays visible
 const ANIMATION_DURATION = 300; // Duration of slide/fade animation
 
 // Define notification types
-type NotificationType = 'stat' | 'quest';
+export type NotificationType = 'stat' | 'quest' | 'achievement'; // Add achievement
 export type QuestStatus = 'Completed' | 'Skipped' | 'Undone'; // Export this type
 
 // Updated NotificationItem interface
 export interface NotificationItem {
-  id: string; 
+  id: string;
   type: NotificationType;
   statLabel?: string; // Optional: only for 'stat' type
   amount?: number;    // Optional: only for 'stat' type
   questTitle?: string; // Optional: only for 'quest' type
   questStatus?: QuestStatus; // Optional: only for 'quest' type
+  achievementTitle?: string; // Optional: only for 'achievement' type
 }
 
 interface NotificationPopupProps {
@@ -120,7 +121,7 @@ export default function StatIncreasePopup({ }: NotificationPopupProps) {
   return (
     <View style={[styles.container, staticStyle]}>
       {notifications.map((notif) => (
-        <View key={notif.id} style={styles.notificationRow}> 
+        <View key={notif.id} style={styles.notificationRow}>
           {/* Conditional Rendering based on type */} 
           {notif.type === 'stat' && (
             <Text style={styles.textStat}>
@@ -130,6 +131,12 @@ export default function StatIncreasePopup({ }: NotificationPopupProps) {
           {notif.type === 'quest' && (
             <Text style={styles.textQuest} numberOfLines={1} ellipsizeMode="tail">
               {notif.questStatus}: {notif.questTitle}
+            </Text>
+          )}
+          {/* Add rendering for achievement type */}
+          {notif.type === 'achievement' && (
+            <Text style={styles.textAchievement} numberOfLines={1} ellipsizeMode="tail">
+              Achievement Unlocked: {notif.achievementTitle}
             </Text>
           )}
         </View>
@@ -172,5 +179,12 @@ const styles = StyleSheet.create({
     fontSize: ms(10),
     color: '#ffffff', // White color for quests
     textAlign: 'center',
+  },
+  // Style for Achievement notifications
+  textAchievement: {
+      fontFamily: FONT_FAMILY,
+      fontSize: ms(10),
+      color: '#ffd700', // Gold color for achievements
+      textAlign: 'center',
   },
 }); 

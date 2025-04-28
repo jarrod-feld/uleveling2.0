@@ -132,6 +132,7 @@ const styles = StyleSheet.create({
     marginHorizontal: s(20),
     marginBottom: vs(20),
     shadowColor: "#fff",
+    
     shadowOffset: {
       width: 0,
       height: 0,
@@ -205,6 +206,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: vs(10),
     paddingHorizontal: ms(10),
+   
   },
   modalTitle: {
     fontFamily: FONT_FAMILY,

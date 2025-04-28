@@ -15,7 +15,7 @@ interface QuestDetailPopupProps {
 }
 
 // Increase height slightly for button
-const POPUP_HEIGHT = vs(340); 
+const POPUP_HEIGHT = vs(370); 
 
 export default function QuestDetailPopup({ 
   quest, 
@@ -96,10 +96,10 @@ export default function QuestDetailPopup({
 
         <View style={styles.separator} />
 
-        <Text style={styles.detailLabel}>Stats Increased:</Text>
+        <Text style={styles.detailLabel}>Rewards:</Text>
         {/* Always list Discipline */}
         <Text style={styles.statValue}>
-          - Discipline: +{quest.disciplineIncrementAmount ?? 1}
+          - DIS: +{quest.disciplineIncrementAmount ?? 1}
         </Text>
         {/* List other explicit stats */}
         {quest.statIncrements.map(inc => (
@@ -167,6 +167,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY,
     fontSize: ms(10),
     color: '#ccc',
+    marginBottom: vs(5),
   },
   detailValue: {
     fontFamily: FONT_FAMILY,
@@ -178,7 +179,7 @@ const styles = StyleSheet.create({
      fontSize: ms(9),
      color: '#fff',
      marginLeft: s(10), // Indent stat list
-     marginBottom: vs(3),
+     marginTop: vs(3),
    },
    closeButton: {
     alignSelf: 'center', // Center the button

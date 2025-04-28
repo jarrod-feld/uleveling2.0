@@ -15,6 +15,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Asset } from 'expo-asset';
 import { scale, verticalScale, moderateScale } from '@/constants/scaling';
+import AccountService from '@/services/AccountService';
 // Remove context/type imports
 // import { OnboardingProvider } from '@/context/OnboardingContext';
 // import { StepProps } from '@/types/onboarding';
@@ -83,6 +84,7 @@ interface StepProps { /* ... existing fields ... */ }
 // Restore original export
 export default function OnboardingIndex() {
   const router = useRouter();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // Loading state for auth check
 
   /* ------------ preload assets ------------ */
   const [assetsReady, setAssetsReady] = useState(false);
@@ -96,6 +98,38 @@ export default function OnboardingIndex() {
       setStepValid(true); // Step 0 is now Welcome, which is valid
     })();
   }, []);
+
+  // --- Auth Check Effect ---
+  useEffect(() => {
+    async function checkAuthStatus() {
+      console.log('[OnboardingIndex] Checking initial auth status...');
+      try {
+        const { session, error } = await AccountService.getSession();
+        if (error) {
+          console.error('[OnboardingIndex] Error checking session:', error.message);
+          // Proceed to onboarding even if there was an error fetching session
+          setIsCheckingAuth(false);
+          return;
+        }
+
+        if (session) {
+          console.log('[OnboardingIndex] Active session found. Redirecting to dashboard...');
+          setIsNavigating(true); // Prevent rendering onboarding steps
+          router.replace('/(tabs)/dashboard' as any);
+          // Keep isCheckingAuth true until navigation completes to avoid flashing UI
+        } else {
+          console.log('[OnboardingIndex] No active session found. Starting onboarding.');
+          setIsCheckingAuth(false); // Allow onboarding to render
+        }
+      } catch (err) {
+        console.error('[OnboardingIndex] Unexpected error during auth check:', err);
+        setIsCheckingAuth(false); // Proceed to onboarding on unexpected error
+      }
+    }
+
+    checkAuthStatus();
+  }, [router]); // Depend on router
+  // ------------------------
 
   /* ------------ onboarding & popup state -------------------- */
   const [step,       setStep]       = useState<number>(0);
@@ -259,6 +293,16 @@ export default function OnboardingIndex() {
 
   /* ----------- UI ----------- */
   if (!assetsReady) {
+    return (
+      <View style={[styles.bg, { justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color="#00ffff" />
+      </View>
+    );
+  }
+
+  // Show loading indicator while checking auth or navigating
+  if (isCheckingAuth || isNavigating) {
+     console.log(`[OnboardingIndex] Rendering loading indicator (isCheckingAuth: ${isCheckingAuth}, isNavigating: ${isNavigating}).`);
     return (
       <View style={[styles.bg, { justifyContent: 'center' }]}>
         <ActivityIndicator size="large" color="#00ffff" />
