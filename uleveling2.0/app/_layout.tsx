@@ -2,6 +2,9 @@ import React, { useEffect } from 'react';
 import { Stack, SplashScreen } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { UserProvider } from '@/contexts/UserContext';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -28,11 +31,20 @@ export default function RootLayout() {
   // Render the navigation stack within the Gesture Handler Root View
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Stack
-        screenOptions={{
-          headerShown: false, // Hide the header globally
-        }}
-      />
+      <SafeAreaProvider>
+        <NotificationProvider>
+          <UserProvider>
+            <Stack
+              screenOptions={{
+                headerShown: false, // Hide the header globally
+              }}
+            >
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            </Stack>
+          </UserProvider>
+        </NotificationProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

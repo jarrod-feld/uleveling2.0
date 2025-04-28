@@ -10,22 +10,21 @@ const EDIT_POPUP_HEIGHT = vs(200);
 
 interface Props {
   level: number;
+  username: string;
   title: string;
 }
 
-export default function LevelHeader({ level, title }: Props) {
+export default function LevelHeader({ level, username: initialUsername, title }: Props) {
   const { user, updateUserProfile, isLoading } = useAuth();
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [newName, setNewName] = useState('');
-
-  const username = user?.user_metadata?.name || 'Player';
+  const [newName, setNewName] = useState(initialUsername);
 
   useEffect(() => {
-    console.log(`[LevelHeader Effect] User object changed. Current username derived: ${username}`);
-  }, [user]);
+    setNewName(initialUsername);
+  }, [initialUsername]);
 
   const openEditModal = () => {
-    setNewName(username);
+    setNewName(newName);
     setIsModalVisible(true);
   };
 
@@ -35,7 +34,7 @@ export default function LevelHeader({ level, title }: Props) {
       Alert.alert('Error', 'Username cannot be empty.');
       return;
     }
-    if (trimmedName === username) {
+    if (trimmedName === initialUsername) {
         setIsModalVisible(false);
         return;
     }
@@ -53,109 +52,152 @@ export default function LevelHeader({ level, title }: Props) {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.levelContainer}>
-        <Text style={styles.levelText}>{level}</Text>
-        <Text style={styles.levelLabel}>Level</Text>
-      </View>
-      <View style={styles.userInfoContainer}>
-        <Pressable style={styles.usernameRow} onPress={openEditModal} disabled={isLoading}>
-          <Text style={styles.usernameText}>{username}</Text>
-          <PencilSimpleLine size={ms(14)} color="#fff" style={styles.editIcon}/>
-        </Pressable>
-        <Text style={styles.titleText}>Title: {title}</Text>
+    <View style={styles.outerContainer}>
+      <View style={styles.titleBar}>
+        <Text style={styles.titleBarText}>Stats</Text>
       </View>
 
-      <SoloPopup
-        visible={isModalVisible}
-        onClose={() => setIsModalVisible(false)}
-        requiredHeight={EDIT_POPUP_HEIGHT}
-        disableBackdropClose={false}
-      >
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Edit Username</Text>
-          <TextInput
-            style={styles.modalInput}
-            value={newName}
-            onChangeText={setNewName}
-            placeholder="Enter new username"
-            placeholderTextColor="#555"
-            maxLength={50}
-            autoCapitalize="words"
-            returnKeyType="done"
-            autoFocus
-          />
-          <View style={styles.modalButtonRow}>
-            <Pressable 
-              style={[styles.modalButton, styles.cancelButton]} 
-              onPress={() => setIsModalVisible(false)} 
-              disabled={isLoading}
-            >
-              <Text style={styles.modalButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable 
-              style={[styles.modalButton, styles.saveButton]} 
-              onPress={handleSaveUsername} 
-              disabled={isLoading}
-            >
-              <Text style={styles.modalButtonText}>Save</Text>
-            </Pressable>
-          </View>
+      <View style={styles.container}>
+        <View style={styles.levelContainer}>
+          <Text style={styles.levelText}>{level}</Text>
+          <Text style={styles.levelLabel}>Level</Text>
         </View>
-      </SoloPopup>
+        <View style={styles.userInfoContainer}>
+          <Pressable style={styles.usernameRow} onPress={openEditModal} disabled={isLoading}>
+            <Text style={styles.usernameText}>{newName}</Text>
+            <PencilSimpleLine size={ms(14)} color="#fff" style={styles.editIcon} weight="fill"/>
+          </Pressable>
+          <Text style={styles.titleText}>Title: {title}</Text>
+        </View>
+
+        <SoloPopup
+          visible={isModalVisible}
+          onClose={() => setIsModalVisible(false)}
+          requiredHeight={EDIT_POPUP_HEIGHT}
+          disableBackdropClose={false}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Username</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="Enter new username"
+              placeholderTextColor="#555"
+              maxLength={50}
+              autoCapitalize="words"
+              returnKeyType="done"
+              autoFocus
+            />
+            <View style={styles.modalButtonRow}>
+              <Pressable 
+                style={[styles.modalButton, styles.cancelButton]} 
+                onPress={() => setIsModalVisible(false)} 
+                disabled={isLoading}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable 
+                style={[styles.modalButton, styles.saveButton]} 
+                onPress={handleSaveUsername} 
+                disabled={isLoading}
+              >
+                <Text style={styles.modalButtonText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </SoloPopup>
+      </View>
     </View>
   );
 }
 
+const glowStyle = {
+  textShadowColor: 'rgba(255, 255, 255, 0.8)',
+  textShadowOffset: { width: 0, height: 0 },
+  textShadowRadius: 8,
+};
+
 const styles = StyleSheet.create({
+  outerContainer: {
+    marginBottom: vs(10),
+  },
+  titleBar: {
+    borderWidth: s(3),
+    borderColor: '#fff',
+    paddingVertical: vs(8),
+    paddingHorizontal: s(15),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: s(20),
+    marginBottom: vs(20),
+    shadowColor: "#fff",
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.8,
+    shadowRadius: 5,
+    elevation: 10,
+    backgroundColor: '#0a192f',
+  },
+  titleBarText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: ms(18),
+    color: '#fff',
+    ...glowStyle,
+  },
   container: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: s(20),
-    paddingVertical: ms(10),
-    marginTop: ms(15),
   },
   levelContainer: {
     alignItems: 'center',
-    marginRight: s(15),
-    minWidth: s(60),
+    marginRight: s(20),
+    minWidth: s(70),
   },
   levelText: {
     fontFamily: FONT_FAMILY,
-    fontSize: ms(36),
+    fontSize: ms(35),
     color: '#fff',
-    lineHeight: ms(38),
+    lineHeight: ms(50),
+    ...glowStyle,
   },
   levelLabel: {
     fontFamily: FONT_FAMILY,
-    fontSize: ms(10),
-    color: '#aaa',
-    marginTop: ms(0),
+    fontSize: ms(12),
+    color: '#ffff',
+    marginTop: vs(2),
+    ...glowStyle,
   },
   userInfoContainer: {
     flex: 1,
     alignItems: 'flex-start',
-    marginBottom: ms(4),
+    justifyContent: 'center',
+    height: ms(50) + vs(2) + ms(12),
   },
   usernameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: ms(4),
+    marginBottom: vs(5),
   },
   usernameText: {
     fontFamily: FONT_FAMILY,
     fontSize: ms(16),
     color: '#fff',
+    ...glowStyle,
   },
   editIcon: {
-    marginLeft: s(6),
+    marginLeft: s(8),
+    ...glowStyle,
   },
   titleText: {
     fontFamily: FONT_FAMILY,
     fontSize: ms(10),
-    color: '#aaa',
+    color: '#ccd6f6',
+    ...glowStyle,
   },
-
   modalContent: {
     width: '100%',
     flex: 1,

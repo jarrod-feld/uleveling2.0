@@ -10,13 +10,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import TabBar from '@/components/common/TabBar';
 import { verticalScale as vs, moderateScale } from '@/constants/scaling';
+import { useNotificationContext } from '@/contexts/NotificationContext';
 
 import Dashboard     from '@/app/(tabs)/dashboard';
 import Roadmap       from '@/app/(tabs)/roadmap';
 import Stats         from '@/app/(tabs)/stats';
 import Leaderboard   from '@/app/(tabs)/leaderboard';
 import Achievements  from '@/app/(tabs)/achievements';
-import { UserProvider } from '@/contexts/UserContext';
+import StatIncreasePopup from '@/components/common/StatIncreasePopup';
 
 const TAB_HEIGHT = vs(620);
 const DUR = 170;
@@ -34,60 +35,55 @@ export type TabKey = keyof typeof routes;
 type AnimationState = 'idle' | 'closing' | 'opening';
 
 export default function TabsLayout() {
+  console.log("[TabsLayout] Rendering...");
   const [key, setKey] = useState<TabKey>('dashboard');
   const [targetKey, setTargetKey] = useState<TabKey | null>(null);
   const [animationState, setAnimationState] = useState<AnimationState>('idle');
   const prog = useSharedValue(1);
   const isInitialMount = useRef(true);
 
-  console.log(`-- TabsLayout Render -- Key: ${key}, Target: ${targetKey}, State: ${animationState}`);
+  const { notifications } = useNotificationContext();
+  console.log("[TabsLayout] Got notifications from context. Count:", notifications.length);
+
+  console.log("[TabsLayout] Context hook call removed.");
 
   useEffect(() => {
-    console.log(`Effect [animationState] triggered. State: ${animationState}`);
+    console.log("[TabsLayout] Animation useEffect running. State:", animationState);
     if (animationState === 'closing') {
-      console.log('  -> State=closing: Starting close animation (prog 1->0)');
       prog.value = withTiming(0, { duration: DUR, easing: Easing.in(Easing.cubic) }, (finished) => {
-        console.log(`    -> Close Animation Finished: ${finished}`);
         if (finished && targetKey) {
-          console.log(`       -> Setting key=${targetKey}, state=opening`);
           runOnJS(setKey)(targetKey);
           runOnJS(setTargetKey)(null);
           runOnJS(setAnimationState)('opening');
         }
       });
     } else if (animationState === 'opening') {
-      console.log('  -> State=opening: Starting open animation (prog 0->1)');
       prog.value = withTiming(1, { duration: DUR, easing: Easing.out(Easing.cubic) }, (finished) => {
-        console.log(`    -> Open Animation Finished: ${finished}`);
         if (finished) {
-          console.log('       -> Setting state=idle');
           runOnJS(setAnimationState)('idle');
         }
       });
     }
+    console.log("[TabsLayout] Animation useEffect finished.");
   }, [animationState, targetKey, prog]);
 
   useEffect(() => {
+    console.log("[TabsLayout] Initial Mount useEffect running.");
     if (isInitialMount.current) {
       isInitialMount.current = false;
-    } else {
-        // Optional: Handle any logic needed after initial mount if state starts other than idle
-        // Currently starts idle, so this isn't strictly needed
     }
+    console.log("[TabsLayout] Initial Mount useEffect finished.");
   }, []);
 
   const change = (next: TabKey) => {
-    console.log(`Change Function Called: next=${next}, currentKey=${key}, state=${animationState}`);
     if (key !== next && animationState === 'idle') {
-      console.log(`  -> Starting change from ${key} to ${next}`);
       setTargetKey(next);
       setAnimationState('closing');
-    } else {
-      console.log('  -> Change ignored (already target key or animating)');
     }
   };
 
   const Current = routes[key];
+  console.log("[TabsLayout] Current tab component set to:", key);
 
   const animatedPanelStyle = useAnimatedStyle(() => {
     const height = interpolate(prog.value, [0, 1], [0, TAB_HEIGHT]);
@@ -97,26 +93,20 @@ export default function TabsLayout() {
 
   const shouldRenderContent = animationState === 'idle' || animationState === 'opening';
 
-  if (shouldRenderContent) {
-    console.log(`+++ Preparing to render <Current /> component for key: ${key} (State: ${animationState}) +++`);
-  }
-
+  console.log("[TabsLayout] Preparing to return JSX...");
   return (
-    <View style={styles.root}>
-      <UserProvider>
+    <>
+      <View style={styles.root}>
         <View style={{ flex: 1 }} />
-
         <Animated.View style={[styles.panel, animatedPanelStyle]}>
           {shouldRenderContent && (
-            <View style={styles.inner}>
-              <Current />
-            </View>
+            <View style={styles.inner}><Current /></View>
           )}
         </Animated.View>
-
         <TabBar active={key} onChange={change} disabled={animationState !== 'idle'} />
-      </UserProvider>
-    </View>
+      </View>
+      <StatIncreasePopup />
+    </>
   );
 }
 

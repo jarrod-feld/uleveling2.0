@@ -1,5 +1,7 @@
 export type QuestStatus = 'pending' | 'active' | 'completed' | 'failed';
 
+export type StatCategory = 'STR' | 'INT' | 'VIT' | 'CHA' | 'DIS' | 'CRE' | 'CAR';
+
 export interface QuestObjective {
   id: string;
   description: string;

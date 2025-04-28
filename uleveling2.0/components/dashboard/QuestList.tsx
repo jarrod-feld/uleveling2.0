@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { FlatList } from 'react-native-gesture-handler';
+// import { FlatList } from 'react-native-gesture-handler'; // Remove this import
+import Animated, { FadeOut, Layout } from 'react-native-reanimated'; // Import Animated components
 import { verticalScale as vs, scale as s } from '@/constants/scaling';
 import QuestCard from '@/components/dashboard/QuestCard';
 import { Quest as QuestData } from '@/mock/dashboardData';
@@ -30,23 +31,29 @@ function QuestListComponent({ // Renamed component for clarity
   onUndoStatus,
 }: Props) {
   return (
-    <FlatList
+    <Animated.FlatList // Use Animated.FlatList
       data={data}
       keyExtractor={item => item.id}
       renderItem={({ item }) => (
-        <QuestCard 
-          item={item} 
-          goalTitle={item.goalTitle} // Pass goalTitle down
-          onComplete={onComplete}
-          onSkip={onSkip}
-          onIncrement={onIncrement}
-          onDecrement={onDecrement}
-          onSetCount={onSetCount}
-          onUndoStatus={onUndoStatus}
-        />
+        <Animated.View // Wrap QuestCard in Animated.View
+          key={item.id} // Keep key here for animation tracking
+          exiting={FadeOut.duration(250)} // Add fade out animation
+        >
+          <QuestCard 
+            item={item} 
+            goalTitle={item.goalTitle} // Pass goalTitle down
+            onComplete={onComplete}
+            onSkip={onSkip}
+            onIncrement={onIncrement}
+            onDecrement={onDecrement}
+            onSetCount={onSetCount}
+            onUndoStatus={onUndoStatus}
+          />
+        </Animated.View>
       )}
       scrollEnabled={false}
       contentContainerStyle={styles.listContentContainer}
+      itemLayoutAnimation={Layout.springify().delay(100)} // Animate layout changes
     />
   );
 }

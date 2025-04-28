@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Target, Crown, CaretDoubleDown, UsersThree, GridFour } from 'phosphor-react-native';
-import { moderateScale as ms } from '@/constants/scaling';
+import { moderateScale as ms,verticalScale as vs } from '@/constants/scaling';
 import { TabKey } from '@/app/(tabs)/_layout';
 
 // Define the visual order of icons (UPDATED ORDER)
@@ -51,6 +51,17 @@ export default function TabBar({ active, onChange, disabled }:Props){
   );
 }
 const styles=StyleSheet.create({
-  bar:{ flexDirection:'row', borderWidth:ms(3), borderColor:'#fff', margin:ms(20), backgroundColor:'#000' },
-  btn:{ flex:1, alignItems:'center', paddingVertical:ms(10) },
+  bar:{ 
+    flexDirection:'row', 
+    borderWidth:ms(3), 
+    borderColor:'#fff', 
+    margin:ms(20), 
+    backgroundColor:'#000',
+    
+    
+  },
+  btn:{ flex:1, 
+    alignItems:'center', 
+    justifyContent:'center',
+    paddingVertical:ms(10) },
 }); 

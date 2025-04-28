@@ -102,8 +102,8 @@ export default function OnboardingIndex() {
   const [queuedStep, setQueuedStep] = useState<number | null>(null);
   const [popupVisible, setPopupVisible] = useState(true);
   const [onboardingData, setOnboardingData] = useState<OnboardingData>({});
-  // Initial validity: Step 0 (Welcome) is true, subsequent steps depend on their logic
-  const [isStepValid, setStepValid] = useState<boolean>(true); // Step 0 is now valid
+  const [isStepValid, setStepValid] = useState<boolean>(true);
+  const [isNavigating, setIsNavigating] = useState<boolean>(false);
 
   // --- Stabilize setData callback ---
   const stableSetData = useCallback(
@@ -133,8 +133,8 @@ export default function OnboardingIndex() {
     // Check if it's the final step (index is TOTAL_STEPS - 1)
     if (step === TOTAL_STEPS - 1) {
       console.log("[OnboardingIndex] Reached final step (14). Closing popup to trigger redirect.");
-      setQueuedStep(null); // Ensure no step is queued
-      closePopup(); // Close the popup, handleClosed will trigger the redirect
+      setQueuedStep(null);
+      closePopup();
     } else {
       // Otherwise, proceed to the next step as usual
       let nextStep = step + 1;
@@ -156,6 +156,7 @@ export default function OnboardingIndex() {
       // This condition is now met after closing from Step 14
       // because handleNext set queuedStep to null
       console.log("[OnboardingIndex] Popup closed on final step (14), redirecting to dashboard.");
+      setIsNavigating(true);
       router.replace('/(tabs)/dashboard' as any);
     }
     // Add an else case for safety, though it shouldn't be reached in normal flow
@@ -188,6 +189,7 @@ export default function OnboardingIndex() {
 
   /* --------------- height calculation --------------- */
   function getCurrentStepContentHeight(): number {
+    if (isNavigating) return 0;
     switch (step) {
       case 0:  return STEP_01_HEIGHT; // Step 0 uses Welcome height
       case 1:  return STEP_00_HEIGHT; // Step 1 uses Username height
@@ -213,12 +215,14 @@ export default function OnboardingIndex() {
   const requiredPopupHeight = TITLE_BAR_HEIGHT + currentStepContentHeight + NAV_ROW_HEIGHT + VERTICAL_PADDING;
 
   // --- Debug Log ---
-  console.log(`[OnboardingIndex] Step: ${step}`);
-  if (step === 9) {
-    console.log(`  Roadmap Choice: ${onboardingData.roadmapChoice}`);
+  if (!isNavigating) {
+    console.log(`[OnboardingIndex] Step: ${step}`);
+    if (step === 9) {
+      console.log(`  Roadmap Choice: ${onboardingData.roadmapChoice}`);
+    }
+    console.log(`  currentStepContentHeight: ${currentStepContentHeight}`);
+    console.log(`  requiredPopupHeight: ${requiredPopupHeight} (Title: ${TITLE_BAR_HEIGHT}, Content: ${currentStepContentHeight}, Nav: ${NAV_ROW_HEIGHT}, Padding: ${VERTICAL_PADDING})`);
   }
-  console.log(`  currentStepContentHeight: ${currentStepContentHeight}`);
-  console.log(`  requiredPopupHeight: ${requiredPopupHeight} (Title: ${TITLE_BAR_HEIGHT}, Content: ${currentStepContentHeight}, Nav: ${NAV_ROW_HEIGHT}, Padding: ${VERTICAL_PADDING})`);
   // ---------------
 
   /* --------------- step renderer ---------------------------- */
@@ -260,6 +264,11 @@ export default function OnboardingIndex() {
         <ActivityIndicator size="large" color="#00ffff" />
       </View>
     );
+  }
+
+  if (isNavigating) {
+    console.log("[OnboardingIndex] Navigating away, rendering null.");
+    return null;
   }
 
   return (

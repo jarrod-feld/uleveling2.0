@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { View, StyleSheet, Pressable, Text, ScrollView } from 'react-native';
+import Animated, { FadeIn, Layout, FadeOut } from 'react-native-reanimated';
 import { CaretDown, CaretUp } from 'phosphor-react-native';
 import DailyHeader from '@/components/dashboard/DailyHeader';
 import { Quest } from '@/mock/dashboardData';
@@ -15,8 +16,8 @@ export default function Dashboard(){
 
   const {
     quests,
-    completeQuest,
-    skipQuest,
+    completeQuest: completeQuestContext,
+    skipQuest: skipQuestContext,
     incrementQuestProgress,
     decrementQuestProgress,
     setQuestProgress,
@@ -25,6 +26,7 @@ export default function Dashboard(){
 
   const [showCompleted, setShowCompleted] = useState(false);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [isScrollDisabled, setIsScrollDisabled] = useState(false);
 
   const activeQuests = useMemo(() => quests.filter(q => q.status === 'active'), [quests]);
   const completedQuests = useMemo(() => quests.filter(q => q.status === 'completed'), [quests]);
@@ -34,7 +36,10 @@ export default function Dashboard(){
   const skippedCount = skippedQuests.length;
 
   const toggleCompleted = () => {
-    setShowCompleted(prev => !prev);
+    setShowCompleted(prev => {
+      const newState = !prev;
+      return newState;
+    });
   };
 
   const toggleSkipped = () => {
@@ -51,14 +56,30 @@ export default function Dashboard(){
     }
   }, [undoQuestStatus, completedQuests, skippedQuests]);
 
+  const handleCompleteQuest = useCallback((id: string) => {
+    setIsScrollDisabled(true);
+    completeQuestContext(id);
+    setTimeout(() => {
+      setIsScrollDisabled(false);
+    }, 500);
+  }, [completeQuestContext]);
+
+  const handleSkipQuest = useCallback((id: string) => {
+    setIsScrollDisabled(true);
+    skipQuestContext(id);
+    setTimeout(() => {
+      setIsScrollDisabled(false);
+    }, 500);
+  }, [skipQuestContext]);
+
   return(
     <View style={styles.container}>
       <DailyHeader/>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContentContainer}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContentContainer} scrollEnabled={!isScrollDisabled}>
         <QuestList 
           data={activeQuests}
-          onComplete={completeQuest}
-          onSkip={skipQuest}
+          onComplete={handleCompleteQuest}
+          onSkip={handleSkipQuest}
           onIncrement={incrementQuestProgress}
           onDecrement={decrementQuestProgress}
           onSetCount={setQuestProgress}
@@ -74,14 +95,22 @@ export default function Dashboard(){
             }
           </Pressable>
         )}
-        {showCompleted && completedQuests.map(quest => (
-          <View key={quest.id} style={styles.questWrapper}>
-            <QuestCard 
-              item={quest} 
-              onUndoStatus={handleUndoWithAutoHide}
-            />
-          </View>
-        ))}
+        {showCompleted && completedQuests.map(quest => {
+          return (
+            <Animated.View 
+              key={quest.id} 
+              style={styles.questWrapper} 
+              entering={FadeIn.duration(300)} 
+              exiting={FadeOut.duration(250)}
+            >
+              <QuestCard
+                item={quest}
+                goalTitle={quest.goalTitle}
+                onUndoStatus={handleUndoWithAutoHide}
+              />
+            </Animated.View>
+          );
+        })}
 
         {skippedCount > 0 && (
           <Pressable onPress={toggleSkipped} style={styles.dropdownButton}>
@@ -92,14 +121,22 @@ export default function Dashboard(){
             }
           </Pressable>
         )}
-        {showSkipped && skippedQuests.map(quest => (
-           <View key={quest.id} style={styles.questWrapper}>
-            <QuestCard 
-              item={quest} 
-              onUndoStatus={handleUndoWithAutoHide}
-            />
-          </View>
-        ))}
+        {showSkipped && skippedQuests.map(quest => {
+           return (
+             <Animated.View 
+               key={quest.id} 
+               style={styles.questWrapper} 
+               entering={FadeIn.duration(300)} 
+               exiting={FadeOut.duration(250)}
+             >
+              <QuestCard
+                item={quest}
+                goalTitle={quest.goalTitle}
+                onUndoStatus={handleUndoWithAutoHide}
+              />
+            </Animated.View>
+          );
+        })}
       </ScrollView>
     </View>
   );
