@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import {
-  Barbell, Brain, Heart, Plus, Minus, Check, X, CheckSquare, XSquare, ArrowULeftUp, 
+  Barbell, Brain, Heart, Check, X, CheckSquare, XSquare, Info,
   Star, Lock, Briefcase, PaintBrush
 } from 'phosphor-react-native';
 import { scale as s, verticalScale as vs, scale as ms } from '@/constants/scaling';
-import { Quest as QuestData } from '@/mock/dashboardData'; // Rename import to avoid conflict
-import { StatCategory } from '@/types/quest'; // Import StatCategory
-import QuestDetailPopup from './QuestDetailPopup'; // Import the popup component
+import { Quest as QuestData } from '@/mock/dashboardData';
+import { StatCategory } from '@/types/quest';
+import QuestDetailPopup from './QuestDetailPopup';
 
 const COLOR = {
   bg       : '#002A35',
@@ -18,37 +18,37 @@ const COLOR = {
   border   : '#ffffff',
   greenDone: '#29cc4d',
   grey     : '#888888',
+  progressButtonBg: '#004052',
 };
-const CardHeight = vs(90);
+const CardHeight = vs(130);
+const CardMarginTop = vs(12);
 
-// Copy iconGlowStyle from StatGrid (adjust scale factor if needed, using 1 here for QuestCard)
 const iconGlowStyle = {
   shadowColor: "#fff",
   shadowOffset: { width: 0, height: 0 },
   shadowOpacity: 0.8,
-  shadowRadius: 4, // Base radius, adjust if desired for quest card
+  shadowRadius: 4,
 };
 
-// Map StatCategory to Icon Component - Align with StatGrid
 const STAT_CATEGORY_ICONS: Record<StatCategory, React.ElementType> = {
   STR: Barbell,
   INT: Brain,
   VIT: Heart,
-  CHA: Star,       // Changed from User
-  DIS: Lock,       // Changed from BookOpen
-  CAR: Briefcase,  // Changed from ChartLine
-  CRE: PaintBrush, // Changed from Lightbulb
+  CHA: Star,       
+  DIS: Lock,       
+  CAR: Briefcase,  
+  CRE: PaintBrush, 
 };
 
 interface QuestCardProps {
-  item: QuestData; // Use the imported type
-  goalTitle: string | null; // Add prop for the goal's title
+  item: QuestData;
+  goalTitle: string | null;
   onComplete?: (id: string) => void;
   onSkip?: (id: string) => void;
-  onIncrement?: (id: string) => void;
+  onUndoStatus?: (id: string) => void;
+  onIncrement?: (id: string) => void; 
   onDecrement?: (id: string) => void;
   onSetCount?: (id: string, count: number) => void;
-  onUndoStatus?: (id: string) => void;
 }
 
 export default function QuestCard({
@@ -56,69 +56,83 @@ export default function QuestCard({
   goalTitle,
   onComplete,
   onSkip,
+  onUndoStatus,
   onIncrement,
   onDecrement,
-  onSetCount,
-  onUndoStatus
+  onSetCount
 }: QuestCardProps) {
-  // Get Icon components based on item.stats array (renamed from icons)
-  const Icon1 = STAT_CATEGORY_ICONS[item.stats[0]] || Barbell; // Default to Barbell if somehow missing
+
+  // --- Debugging Logs --- 
+  console.log('---------------------------');
+  console.log(`[QuestCard] Rendering Card for ID: ${item?.id}, Title: ${item?.title}`);
+  console.log('[QuestCard] Full item prop:', JSON.stringify(item, null, 2));
+  console.log('[QuestCard] item.stats:', JSON.stringify(item?.stats, null, 2));
+  console.log('[QuestCard] item.statIncrements:', JSON.stringify(item?.statIncrements, null, 2));
+  console.log('[QuestCard] item.progress:', JSON.stringify(item?.progress, null, 2));
+  console.log('---------------------------');
+  // ----------------------
+
+  // --- Add safe defaults right before use, if logs show issues ---
+  // Example (uncomment and adapt based on logs):
+  // const safeStats = Array.isArray(item.stats) ? item.stats : [];
+  // const safeProgress = typeof item.progress === 'object' && item.progress !== null 
+  //                      ? item.progress 
+  //                      : { current: 0, total: 1 }; 
+  // ------------------------------------------------------------
+
+  const Icon1 = STAT_CATEGORY_ICONS[item.stats[0]] || Barbell;
   const Icon2 = item.stats[1] ? STAT_CATEGORY_ICONS[item.stats[1]] : null;
   
   const count = item.progress.current;
+  const total = item.progress.total;
+  const swipeableRef = useRef<Swipeable>(null);
 
-  const handleIncrement = () => onIncrement?.(item.id);
-  const handleDecrement = () => onDecrement?.(item.id);
-  const handleComplete = () => onComplete?.(item.id);
-  const handleSkip = () => onSkip?.(item.id);
-  const handleSetCount = (text: string) => {
-    const newCount = Number(text.replace(/[^0-9]/g, ''));
-    if (!isNaN(newCount)) {
-       const clampedCount = Math.max(0, Math.min(item.progress.total, newCount));
-       onSetCount?.(item.id, clampedCount);
+  const handleComplete = () => {
+    if (onComplete) {
+      onComplete(item.id);
     }
   };
-  const handleUndo = () => onUndoStatus?.(item.id);
+  const handleSkip = () => {
+    if (onSkip) {
+      onSkip(item.id);
+    }
+  };
+  const handleUndo = () => {
+    console.log(`[QuestCard] handleUndo called for item ID: ${item.id}`);
+    onUndoStatus?.(item.id);
+  };
 
-  // State for popup visibility and selected quest
   const [isPopupVisible, setIsPopupVisible] = useState(false);
 
   const openPopup = () => {
-    console.log("Single tap detected, opening popup for:", item.id);
-    setIsPopupVisible(true);
+    if (!isInactive) {
+       console.log(`[QuestCard] openPopup called for item ID: ${item.id}`);
+       setIsPopupVisible(true);
+    }
   };
 
   const closePopup = () => {
     setIsPopupVisible(false);
   };
 
-  const RightPanel = () => (
-    <View style={styles.sideWrap}>
-      <Pressable style={styles.iconBtn} onPress={handleIncrement}>
-        <Plus size={s(14)} color={COLOR.green} weight="bold" />
-      </Pressable>
-      <TextInput
-        style={styles.input}
-        keyboardType="numeric"
-        value={String(count)}
-        onChangeText={handleSetCount}
-        selectTextOnFocus={true}
-      />
-      <Pressable style={[styles.iconBtn, { marginTop: vs(6) }]} onPress={handleDecrement}>
-        <Minus size={s(14)} color={COLOR.red} weight="bold" />
-      </Pressable>
-    </View>
+  const handleSwipeOpen = (direction: 'left' | 'right') => {
+    swipeableRef.current?.close(); 
+    if (direction === 'left' && !isInactive) {
+      handleComplete();
+    } else if (direction === 'right' && !isInactive) {
+      handleSkip();
+    }
+  };
+  
+  const renderLeftActions = () => (
+     <View style={[styles.swipeActionBackground, { backgroundColor: COLOR.green, alignItems: 'flex-start' }]}>
+        <Check size={s(20)} color={COLOR.white} weight="bold" style={styles.swipeActionIcon} />
+     </View>
   );
-
-  const LeftPanel = () => (
-    <View style={styles.sideWrap}>
-      <Pressable style={styles.iconBtn} onPress={handleComplete}>
-        <Check size={s(14)} color={COLOR.green} weight="bold" />
-      </Pressable>
-      <Pressable style={[styles.iconBtn, { marginTop: vs(8) }]} onPress={handleSkip}>
-        <X size={s(14)} color={COLOR.red} weight="bold" />
-      </Pressable>
-    </View>
+  const renderRightActions = () => (
+     <View style={[styles.swipeActionBackground, { backgroundColor: COLOR.red, alignItems: 'flex-end' }]}>
+         <X size={s(20)} color={COLOR.white} weight="bold" style={styles.swipeActionIcon} />
+     </View>
   );
 
   const isCompleted = item.status === 'completed';
@@ -140,14 +154,18 @@ export default function QuestCard({
   return (
     <>
       <Swipeable
-        renderRightActions={!isInactive ? RightPanel : undefined}
-        renderLeftActions={!isInactive ? LeftPanel : undefined}
+        ref={swipeableRef}
+        renderRightActions={!isInactive ? renderRightActions : undefined}
+        renderLeftActions={!isInactive ? renderLeftActions : undefined}
+        onSwipeableOpen={handleSwipeOpen}
         enabled={!isInactive}
+        friction={1}
         overshootFriction={4}
-        friction={2}
-        activeOffsetX={[-15, 15]}
+        activeOffsetX={[-10, 10]}
+        rightThreshold={60}
+        leftThreshold={60}
       >
-        <Pressable onPress={openPopup}>
+        <Pressable disabled={isInactive}>
           <View style={cardStyle}>
             <View style={styles.topContent}>
               <View style={styles.row}>
@@ -171,30 +189,35 @@ export default function QuestCard({
             </View>
 
             <View style={styles.rowEnd}>
-              {isInactive && (
-                <Pressable onPress={handleUndo} style={styles.undoButtonContainer}>
+              {isInactive ? (
+                <Pressable onPress={handleUndo} style={styles.actionButtonContainer}>
                   <Text style={styles.undoText}>[undo]</Text>
                 </Pressable>
+              ) : (
+                <View style={styles.actionButtonContainer} />
               )}
               <View style={{ flex: 1 }} />
               {statusIcon ? (
                 statusIcon
               ) : (
-                <Text style={styles.progress}>
-                  [{count}/{item.progress.total}]
-                </Text>
+                <Pressable onPress={openPopup} style={styles.progressButton}>
+                  <Text style={styles.progressButtonText}>
+                    [{count}/{total}]
+                  </Text>
+                </Pressable>
               )}
             </View>
           </View>
         </Pressable>
       </Swipeable>
 
-      {/* Always render the popup, let its 'isVisible' prop handle animation */}
       <QuestDetailPopup 
         quest={item} 
         goalTitle={goalTitle} 
-        isVisible={isPopupVisible} // Pass visibility down
+        isVisible={isPopupVisible} 
         onClose={closePopup}
+        onSetCount={onSetCount}
+        isQuestInactive={isInactive}
       />
     </>
   );
@@ -210,10 +233,11 @@ const styles = StyleSheet.create({
     padding          : s(10),
     backgroundColor  : COLOR.bg,
     width: '100%',
-    marginTop        : vs(12),
+    marginTop        : CardMarginTop,
     justifyContent   : 'space-between',
     height           : CardHeight,
     paddingLeft: s(6),
+    overflow: 'hidden',
   },
   topContent: {
   },
@@ -229,8 +253,9 @@ const styles = StyleSheet.create({
   iconColumn: {
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     marginRight: s(7),
+    marginTop: vs(2),
     minWidth: ms(20),
   },
   textColumn: {
@@ -257,46 +282,44 @@ const styles = StyleSheet.create({
     ...baseFont, 
     color: COLOR.white, 
     fontSize: s(10), 
-  },
-  sideWrap: {
-    width          : s(58),
-    height      : CardHeight,
-    marginTop      : vs(12),
-    justifyContent : 'center',
-    alignItems     : 'center',
-  },
-  iconBtn: {
-    width: s(26),
-    height: vs(25),
-    borderWidth: 2,
-    borderColor: COLOR.border,
-    justifyContent:'center',
-    alignItems:'center',
-  },
-  input: {
-    ...baseFont,
-    color: COLOR.white,
-    fontSize: s(10),
-    marginTop: vs(6),
-    marginBottom: vs(6),
-    width: s(32),
-    height: vs(20),
-    textAlign: 'center',
-    borderWidth: 2,
-    borderColor: COLOR.border,
-    padding: 0,
+    marginRight: s(4),
   },
   statusIcon: {
+     marginRight: s(4),
   },
-  undoButtonContainer: {
+  actionButtonContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: s(5),
+   
+    
     marginLeft: 0,
   },
   undoText: {
     ...baseFont,
     color: COLOR.grey,
     fontSize: s(10),
+  },
+  swipeActionBackground: {
+    flex: 1,
+    justifyContent: 'center',
+    height: CardHeight,
+    marginTop: CardMarginTop,
+    paddingHorizontal: s(20),
+  },
+  swipeActionIcon: {
+  },
+  progressButton: {
+     backgroundColor: COLOR.progressButtonBg,
+     paddingVertical: vs(4),
+     paddingHorizontal: s(8),
+     borderRadius: s(4),
+     borderWidth: 1,
+     borderColor: COLOR.border,
+     marginRight: s(4),
+  },
+  progressButtonText: {
+     ...baseFont, 
+     color: COLOR.white, 
+     fontSize: s(11),
   },
 }); 

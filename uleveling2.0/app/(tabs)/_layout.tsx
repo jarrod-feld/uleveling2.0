@@ -43,9 +43,6 @@ export default function TabsLayout() {
   const isInitialMount = useRef(true);
 
   const { notifications } = useNotificationContext();
-  console.log("[TabsLayout] Got notifications from context. Count:", notifications.length);
-
-  console.log("[TabsLayout] Context hook call removed.");
 
   useEffect(() => {
     console.log("[TabsLayout] Animation useEffect running. State:", animationState);

@@ -1,32 +1,56 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Barbell, Brain } from 'phosphor-react-native';
-import { scale as s } from '@/constants/scaling';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Barbell, Brain, Heartbeat, Handshake, Sparkle, Briefcase, Lightbulb } from 'phosphor-react-native';
+import { scale as s, verticalScale as vS } from '@/constants/scaling';
 import { Goal } from '@/mock/roadmapData';
+import { StatCategory } from '@/components/roadmap/CategoryFilterNav';
 
-// Log imported icons immediately
-console.log('Imported Brain:', typeof Brain);
-console.log('Imported Barbell:', typeof Barbell);
+const iconMap: Record<Exclude<StatCategory, 'ALL'>, React.ElementType> = {
+  STR: Barbell,
+  INT: Brain,
+  VIT: Heartbeat,
+  CHA: Handshake,
+  DIS: Sparkle,
+  CAR: Briefcase,
+  CRE: Lightbulb,
+};
 
-export default function GoalRow({ goal }: { goal: Goal }) {
-  // Log the received goal object
-  console.log('GoalRow rendering with goal:', JSON.stringify(goal));
+interface GoalRowProps {
+  goal: Goal;
+  onPress: (goal: Goal) => void;
+}
 
-  const Icon = goal.category === 'INT' ? Brain : Barbell;
+export default function GoalRow({ goal, onPress }: GoalRowProps) {
+  const Icon = iconMap[goal.category] || Barbell;
   const iconSize = s(16);
   const iconColor = '#fff';
 
-  // Log icon details before rendering
-  console.log(`GoalRow rendering Icon: ${goal.category === 'INT' ? 'Brain' : 'Barbell'}, Size: ${iconSize}, Color: ${iconColor}`);
-
   return (
-    <View style={styles.row}>
-      <Icon size={iconSize} color={iconColor} />
+    <TouchableOpacity onPress={() => onPress(goal)} style={styles.row}>
+      <Icon size={iconSize} color={iconColor} weight="bold" />
       <Text style={styles.txt} numberOfLines={2}>{goal.title}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
-const styles=StyleSheet.create({
-  row:{flexDirection:'row',alignItems:'center',borderWidth:2,borderColor:'#fff',padding:s(8),marginHorizontal:s(20),marginTop:s(12)},
-  txt:{fontFamily:'PressStart2P',fontSize:s(10),color:'#fff',marginLeft:s(6),flexShrink:1}
+
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+    paddingVertical: vS(10),
+    paddingHorizontal: s(12),
+    marginHorizontal: s(0),
+    marginTop: vS(12),
+    borderRadius: s(5),
+    height: vS(70),
+  },
+  txt: {
+    fontFamily: 'PressStart2P',
+    fontSize: s(10),
+    color: '#fff',
+    marginLeft: s(10),
+    flexShrink: 1
+  }
 }); 

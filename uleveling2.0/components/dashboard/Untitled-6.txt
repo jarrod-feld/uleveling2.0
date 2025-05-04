@@ -1,0 +1,137 @@
+c:/Users/Jarrod/Desktop/uleveling2.0/
+├── .cursor/
+│   └── rules/
+│       └── directorylocation.mdc
+└── uleveling2.0/
+    ├── .env
+    ├─] .expo/ (ignored)
+    ├── .gitignore
+    ├── app/
+    │   ├── (tabs)/
+    │   │   ├── achievements.tsx
+    │   │   ├── dashboard.tsx
+    │   │   ├── index.ts
+    │   │   ├── index.tsx
+    │   │   ├── leaderboard.tsx
+    │   │   ├── roadmap.tsx
+    │   │   ├── stats.tsx
+    │   │   └── _layout.tsx
+    │   ├── +html.tsx
+    │   ├── index.tsx
+    │   ├── onboarding/
+    │   │   ├── index.tsx
+    │   │   └── _layout.tsx
+    │   └── _layout.tsx
+    ├── app.json
+    ├── assets/
+    │   ├── fonts/
+    │   │   ├── .gitkeep
+    │   │   ├── PressStart2P-Regular.ttf
+    │   │   └── SpaceMono-Regular.ttf
+    │   ├── img/
+    │   │   ├── .gitkeep
+    │   │   ├── adaptive-icon.png
+    │   │   ├── favicon.png
+    │   │   ├── icon.png
+    │   │   ├── splash-icon.png
+    │   │   ├── techno-background.gif
+    │   │   ├── techno-background2.gif
+    │   │   ├── techno-border-bottom.png
+    │   │   └── techno-border-top.png
+    │   └── sounds/
+    │       ├── closing.mp3
+    │       └── opening..mp3
+    ├── components/
+    │   ├── achievements/
+    │   │   └── AchievementCard.tsx
+    │   ├── common/
+    │   │   ├── NavRow.tsx
+    │   │   ├── SoloPopup.tsx
+    │   │   ├── TabBar.tsx
+    │   │   ├── TimePickerTriple.tsx
+    │   │   └── TitleBar.tsx
+    │   ├── dashboard/
+    │   │   ├── CountdownCircle.tsx
+    │   │   ├── DailyHeader.tsx
+    │   │   ├── QuestCard.tsx
+    │   │   └── QuestList.tsx
+    │   ├── leaderboard/
+    │   │   └── LeaderRow.tsx
+    │   ├── onboarding/
+    │   │   ├── Step00_Username.tsx
+    │   │   ├── Step01_Welcome.tsx
+    │   │   ├── Step02_Age.tsx
+    │   │   ├── Step03_Gender.tsx
+    │   │   ├── Step04_LifeStatus.tsx
+    │   │   ├── Step05_Sleep.tsx
+    │   │   ├── Step06_TimeCommit.tsx
+    │   │   ├── Step07_FocusAreas.tsx
+    │   │   ├── Step08_RoadmapChoice.tsx
+    │   │   ├── Step09_GoalList.tsx
+    │   │   ├── Step09_Template.tsx
+    │   │   ├── Step10_SignIn.tsx
+    │   │   ├── Step11_FoundUs.tsx
+    │   │   ├── Step12_Rating.tsx
+    │   │   ├── Step13_Paywall.tsx
+    │   │   └── Step14_Done.tsx
+    │   ├── roadmap/
+    │   │   ├── GoalRow.tsx
+    │   │   └── ProgressHeader.tsx
+    │   ├── stats/
+    │   │   ├── LevelHeader.tsx
+    │   │   └── StatGrid.tsx
+    │   ├── useClientOnlyValue.ts
+    │   ├── useClientOnlyValue.web.ts
+    │   ├── useColorScheme.ts
+    │   └── useColorScheme.web.ts
+    ├── constants/
+    │   ├── Colors.ts
+    │   └── scaling.ts
+    ├── contexts/
+    │   ├── OnboardingContext.tsx
+    │   └── UserContext.tsx
+    ├─] expo-env.d.ts (ignored)
+    ├── hooks/
+    │   └── useOnboarding.ts
+    ├── metro.config.js
+    ├── mock/
+    │   ├── achievementsData.ts
+    │   ├── dashboardData.ts
+    │   ├── leaderboardData.ts
+    │   ├── roadmapData.ts
+    │   └── statsData.ts
+    ├─] node_modules/ (ignored)
+    ├── package-lock.json
+    ├── package.json
+    ├── services/
+    │   ├── AccountService.ts
+    │   ├── AdaptationService.ts
+    │   ├── AIConfigService.ts
+    │   ├── AIEditService.ts
+    │   ├── AuthService.ts
+    │   ├── FlagService.ts
+    │   ├── HabitService.ts
+    │   ├── index.ts
+    │   ├── NotificationService.ts
+    │   ├── OnboardingService.ts
+    │   ├── PaywallService.ts
+    │   ├── PenaltyService.ts
+    │   ├── QuestService.ts
+    │   ├── RoadmapService.ts
+    │   ├── SettingsService.ts
+    │   ├── StatService.ts
+    │   ├── SubscriptionService.ts
+    │   ├── TaskUnlockService.ts
+    │   ├── TitleService.ts
+    │   └── UserService.ts
+    ├── tsconfig.json
+    ├── types/
+    │   ├── habit.ts
+    │   ├── index.ts
+    │   ├── onboarding.ts
+    │   ├── quest.ts
+    │   └── roadmap.ts
+    └── utils/
+        ├── date.ts
+        ├── index.ts
+        └── validators.ts

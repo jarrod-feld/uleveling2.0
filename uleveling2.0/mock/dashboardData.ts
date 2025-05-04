@@ -10,7 +10,7 @@ export interface Quest {
   status: 'active' | 'completed' | 'skipped'; // Add status if needed based on previous context
   progress: { current: number; total: number }; // Revert: Make progress non-optional
   statIncrements: { category: StatCategory; amount: number }[]; // Explicit non-DIS increments
-  disciplineIncrementAmount?: number; // Specific amount for DIS (optional)
+  disciplineIncrementAmount: number; // Make mandatory (remove ?)
   completedAt?: Date; // Add optional completion timestamp
 }
 

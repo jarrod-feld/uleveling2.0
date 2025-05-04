@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { UserProvider } from '@/contexts/UserContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
+import { QuestGoalProvider } from '@/contexts/QuestGoalContext';
 import StatIncreasePopup from '@/components/common/StatIncreasePopup';
 import NewTitleNotificationPopup from '@/components/achievements/NewTitleNotificationPopup';
 
@@ -14,7 +15,7 @@ SplashScreen.preventAutoHideAsync();
 // Inner layout component
 function InnerLayout() {
     return (
-        <>
+        <QuestGoalProvider>
             <Stack
                 screenOptions={{
                     headerShown: false,
@@ -27,7 +28,7 @@ function InnerLayout() {
             {/* Render popups - NewTitleNotificationPopup now handles its own visibility */}
             <StatIncreasePopup />
             <NewTitleNotificationPopup />
-        </>
+        </QuestGoalProvider>
     );
 }
 

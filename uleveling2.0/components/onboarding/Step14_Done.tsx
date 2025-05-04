@@ -3,55 +3,66 @@ import { View, Text, StyleSheet } from 'react-native';
 import { moderateScale, verticalScale } from '@/constants/scaling';
 import { OnboardingData } from '@/app/onboarding';
 
+// --- Removed Imports ---
+// import AccountService from '@/services/AccountService';
+// import AIService from '@/services/AIService';
+// import RoadmapService from '@/services/RoadmapService';
+// import QuestService from '@/services/QuestService';
+// import UserService from '@/services/UserService';
+// import { Goal } from '@/mock/roadmapData';
+// import { Quest } from '@/mock/dashboardData';
+// --------------------
+
 // Define StepProps locally
 interface StepProps {
   data: OnboardingData;
-  setData: (updater: (prev: OnboardingData) => OnboardingData) => void;
-  setValid: (isValid: boolean) => void;
+  onComplete: () => void;
 }
 
-export const STEP_CONTENT_HEIGHT = verticalScale(250);
+export const STEP_CONTENT_HEIGHT = verticalScale(190);
 
-export default function Step14_Done({ data, setData, setValid }: StepProps) {
+export default function Step14_Done({ data, onComplete }: StepProps) {
+  // --- Removed State ---
+  // const [isLoading, setIsLoading] = useState(true);
+  // const [isGeneratingGoals, setIsGeneratingGoals] = useState(false);
+  // const [isGeneratingQuests, setIsGeneratingQuests] = useState(false);
+  // const [isSaving, setIsSaving] = useState(false);
+  // const [error, setError] = useState<string | null>(null);
+  // const [statusText, setStatusText] = useState<string>("Preparing your profile...");
+  // ------------------
 
-  // This step is always valid
+  // Signal completion immediately on mount
   useEffect(() => {
-    console.log('[Step14_Done] useEffect running, calling setValid(true)');
-    setValid(true); // Mark step as valid immediately
-  }, [setValid]);
+    console.log("[Step14_Done] Mounted. Calling onComplete.");
+    onComplete(); // Signal to parent that this step is ready/valid
+  }, [onComplete]);
 
-  // Log the final data when this step is reached
-  useEffect(() => {
-    console.log("Onboarding Complete. Final Data:", JSON.stringify(data, null, 2));
-  }, [data]);
+  // --- Removed AI Generation useEffect and triggerAIGeneration function ---
 
   return (
     <View style={styles.container}>
       <Text style={styles.label}>Welcome Player!</Text>
       <Text style={styles.infoText}>
-        Your profile is set up. Get ready to level up your life!
+         Your personalized roadmap and quests are being generated... Press NEXT to begin your journey!
       </Text>
-      <Text style={styles.infoText}>
-        Press NEXT to enter the dashboard.
-      </Text>
-      {/* The actual navigation is handled by the Next button in the parent screen */}
+      {/* Removed loading indicator and progress segments */}
     </View>
   );
 }
 
-// --- Styles ---
+// --- Styles (Simplified) ---
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingVertical: verticalScale(20),
     width: '100%',
-    minHeight: verticalScale(150), // Ensure some minimum height
+    minHeight: STEP_CONTENT_HEIGHT, // Use constant
     justifyContent: 'center',
   },
   label: {
     fontFamily: 'PressStart2P',
     fontSize: moderateScale(16, 0.5),
-    color: '#00FF00', // Green title
+    color: '#00FF00',
     textShadowColor: '#00FF00',
     textShadowRadius: moderateScale(8),
     textShadowOffset: { width: 0, height: 0 },
@@ -68,4 +79,5 @@ const styles = StyleSheet.create({
       marginBottom: verticalScale(15),
       paddingHorizontal: moderateScale(10),
   },
+  // Removed statusText, errorText, activityIndicator, progress styles
 }); 

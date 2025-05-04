@@ -1,4 +1,4 @@
-import { formatDistanceToNow, parseISO } from 'date-fns';
+import { formatDistanceToNow, parseISO, isSameDay, startOfDay } from 'date-fns';
 
 /**
  * Formats an ISO date string into a relative time string (e.g., "about 2 hours ago").
@@ -27,5 +27,21 @@ export function isPastDate(isoDate: string): boolean {
   } catch (error) {
     console.error('Error parsing date:', error);
     return false;
+  }
+}
+
+/**
+ * Checks if a given ISO date string falls on the current calendar day.
+ * @param isoDate - The ISO date string to check.
+ * @returns True if the date is today, false otherwise.
+ */
+export function isToday(isoDate: string): boolean {
+  try {
+    const date = parseISO(isoDate);
+    const today = startOfDay(new Date());
+    return isSameDay(date, today);
+  } catch (error) {
+    console.error('[date utils] Error checking if date is today:', error);
+    return false; // Assume not today on error
   }
 } 

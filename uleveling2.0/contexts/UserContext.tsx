@@ -12,6 +12,7 @@ import TitleService, { UserTitle } from '@/services/TitleService';
 import AchievementService, { UserAchievementStatus } from '@/services/AchievementService';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 import { getAchievementDefinition, TitleReward } from '@/data/achievementsData';
+import UserService from '@/services/UserService';
 
 // Define stat increment amount centrally if needed, or use the one in StatService
 const DEFAULT_STAT_INCREMENT_ON_QUEST_COMPLETE = 1;
@@ -19,24 +20,30 @@ const DEFAULT_STAT_INCREMENT_ON_QUEST_COMPLETE = 1;
 // Remove OnboardingData import if only name is needed for profile update
 // import { OnboardingData } from '@/app/onboarding'; 
 
-// Added QuestWithGoalTitle interface
-interface QuestWithGoalTitle extends Quest {
-  goalTitle: string | null; // Goal title can be null if not found
-  completedAt?: Date; // Add optional completedAt here too
+// Type for raw profile data fetched from AccountService
+interface RawUserProfileData {
+  id: string;
+  name: string | null;
+  level: number;
+  title_id: string | null; // We might still use this to know *if* a title is set, but fetch the current one
+  completed_quests_count: number;
 }
 
-// Add UserProfile type for clarity (can extend User if needed)
+// UserProfile now reflects the structure fetched from DB + the title object
 export interface UserProfile {
   id: string;
   name: string;
   level: number;
-  title: UserTitle | null;
-  completedQuestsCount: number;
+  title: UserTitle | null; // This is fetched separately and combined
+  completed_quests_count: number; // Name matches DB column
 }
 
+// Matches updatable fields in AccountService.updateProfile
 interface UserProfileUpdateData {
   name?: string;
-  // Add other fields as needed based on AccountService.updateProfile
+  title_id?: string | null;
+  completed_quests_count?: number; // Add completed_quests_count
+  level?: number;
 }
 
 // Add state type for the title popup
@@ -51,23 +58,21 @@ interface UserContextType {
   profile: UserProfile | null;
   stats: UserStats | null;
   isLoading: boolean;
+  isProfileLoading: boolean;
+  isAchievementLoading: boolean;
   signInWithApple: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<{ error: Error | null }>;
   updateUserProfile: (profileData: UserProfileUpdateData) => Promise<{ error: Error | null }>;
-  updateTitle: (titleId: string) => Promise<{ error: Error | null }>;
-  quests: QuestWithGoalTitle[];
-  completeQuest: (id: string) => void;
-  skipQuest: (id: string) => void;
-  incrementQuestProgress: (id: string) => void;
-  decrementQuestProgress: (id: string) => void;
-  setQuestProgress: (id: string, count: number) => void;
-  undoQuestStatus: (id: string) => void;
+  updateTitle: (titleId: string | null) => Promise<{ error: Error | null }>;
   achievementsStatus: UserAchievementStatus[];
   claimAchievement: (achievementId: string) => Promise<{ error: Error | null }>;
   availableTitles: UserTitle[];
-  // Add state and closer for the title popup
   newTitlePopupState: NewTitlePopupState;
   closeNewTitlePopup: () => void;
+  isWarningDismissedToday: boolean;
+  dismissWarning: () => void;
+  handleIncrementStatBonus: (statLabel: string, amount: number) => Promise<{ error: Error | null }>;
+  handleIncrementDisciplineBonus: (amount: number) => Promise<{ error: Error | null }>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -76,14 +81,15 @@ interface UserProviderProps {
   children: ReactNode;
 }
 
-// Type guard to check for Error-like object with a message
-function isErrorWithMessage(error: unknown): error is { message: string } {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'message' in error &&
-    typeof (error as { message: unknown }).message === 'string'
-  );
+// Helper function to safely get error message
+function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+        return error.message;
+    }
+    return String(error);
 }
 
 export function UserProvider({ children }: UserProviderProps) {
@@ -92,256 +98,199 @@ export function UserProvider({ children }: UserProviderProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [quests, setQuests] = useState<QuestWithGoalTitle[]>([]);
-  const [isQuestLoading, setIsQuestLoading] = useState<boolean>(true);
   const [isProfileLoading, setIsProfileLoading] = useState<boolean>(true);
-  const [originalQuestStates, setOriginalQuestStates] = useState<Record<string, QuestWithGoalTitle>>({});
   const [achievementsStatus, setAchievementsStatus] = useState<UserAchievementStatus[]>([]);
   const [availableTitles, setAvailableTitles] = useState<UserTitle[]>([]);
   const [isAchievementLoading, setIsAchievementLoading] = useState<boolean>(true);
-  // Add state for the new title popup
   const [newTitlePopupState, setNewTitlePopupState] = useState<NewTitlePopupState>({ visible: false, titleName: null });
+  const [isWarningDismissedToday, setIsWarningDismissedToday] = useState<boolean>(false);
 
   const { addStatNotification, addQuestNotification, addAchievementNotification } = useNotificationContext();
 
-  // --- Helper functions for quest counts (defined earlier) ---
-  const incrementCompletedQuestCount = useCallback(() => {
-      setProfile(currentProfile => {
-          if (!currentProfile) return null;
-          const newCount = (currentProfile.completedQuestsCount || 0) + 1;
-          console.log(`[UserContext] Incrementing completed quest count to: ${newCount}`);
-          return { ...currentProfile, completedQuestsCount: newCount };
-      });
-      // TODO: Persist this count via AccountService
-  }, []);
-
-  const decrementCompletedQuestCount = useCallback(() => {
-      setProfile(currentProfile => {
-          if (!currentProfile) return null;
-          const newCount = Math.max(0, (currentProfile.completedQuestsCount || 0) - 1);
-          console.log(`[UserContext] Decrementing completed quest count to: ${newCount}`);
-          return { ...currentProfile, completedQuestsCount: newCount };
-      });
-       // TODO: Persist this count via AccountService
-  }, []);
-
-  // --- Load Initial Data Effect ---
-  useEffect(() => {
-    let isMounted = true;
+  // Define handleSignOut here, before fetchAllUserData uses it in its definition scope
+  const handleSignOut = useCallback(async () => {
+    console.log('[UserContext] Initiating sign out...');
     setIsLoading(true);
-    setIsQuestLoading(true);
+    const { error } = await AccountService.signOut();
+    if (error) {
+      console.error('[UserContext] Sign Out failed:', error.message);
+      setIsLoading(false);
+    }
+    // Auth state change listener will handle clearing state
+    return { error };
+  }, []);
+
+  // --- Fetch All User Data ---
+  const fetchAllUserData = useCallback(async (userId: string) => {
+    let isMounted = true;
+    console.log(`[UserContext] Fetching all user data for: ${userId}`);
+    setIsLoading(true);
     setIsProfileLoading(true);
     setIsAchievementLoading(true);
 
-    async function loadInitialData() {
-      let currentUserId: string | undefined;
-      // Get Session
-      try {
-        const { session: initialSession, error: sessionError } = await AccountService.getSession();
-        if (isMounted) {
-          if (sessionError && 'message' in sessionError) console.error('[UserContext] Error checking session:', sessionError.message);
-          setSession(initialSession);
-          // --- Set Initial User --- 
-          let initialUser = initialSession?.user;
-          if (!initialUser) {
-              console.warn('[UserContext] No initial user found, creating dummy user object for simulation.');
-              initialUser = {
-                  id: 'dummy-user-id', // Placeholder ID
-                  aud: 'authenticated',
-                  role: 'authenticated',
-                  email: 'dummy@example.com',
-                  email_confirmed_at: new Date().toISOString(),
-                  phone: '',
-                  confirmed_at: new Date().toISOString(),
-                  last_sign_in_at: new Date().toISOString(),
-                  app_metadata: { provider: 'dummy' },
-                  user_metadata: { name: 'Username' }, // Default name from image
-                  identities: [],
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-              };
-          }
-          setUser(initialUser);
-          currentUserId = initialUser.id; // Store user ID for subsequent fetches
-          // ----------------------
-        }
-      } catch (err: unknown) {
-        let errorMessage = "An unknown error occurred";
-        if (isErrorWithMessage(err)) {
-            errorMessage = err.message;
-        }
-        console.error('[UserContext] Unexpected error checking session:', errorMessage);
-        if (isMounted) { setSession(null); setUser(null); }
+    try {
+      const { data: rawProfileData, error: profileError } = await AccountService.getProfile(userId);
+      if (!isMounted) return;
+      if (profileError) {
+        console.error('[UserContext] Error fetching profile:', profileError.message);
+        console.warn('[UserContext] Profile fetch failed, initiating sign out.');
+        await handleSignOut();
+        return;
+      }
+      if (!rawProfileData) {
+        console.warn(`[UserContext] Profile for user ${userId} not found. Initiating sign out.`);
+        await handleSignOut();
+        return;
       }
 
-      if (currentUserId && isMounted) {
-        let fetchedProfileData: UserProfile | null = null;
-        let fetchedStatsData: UserStats | null = null;
-        let initialCompletedQuestsCount = 0; // Use a temp variable
+      const [titleResult, statsResult] = await Promise.all([
+        TitleService.getCurrentTitle(userId),
+        StatService.getStats(userId)
+      ]);
 
-        // --- Fetch Profile, Stats, Current Title ---
-        try {
-          setIsProfileLoading(true);
-          const [profileResult, statsResult, titleResult] = await Promise.all([
-            // TODO: Replace Promise.resolve with actual AccountService.getProfile(currentUserId)
-            Promise.resolve({ data: { id: currentUserId, name: user?.user_metadata?.name || 'Username', level: 99, completedQuestsCount: 0 /* TODO: Fetch real count */ }, error: null }),
-            StatService.getStats(currentUserId),
-            TitleService.getCurrentTitle(currentUserId),
-          ]);
+      if (!isMounted) return;
 
-          if (isMounted) {
-             if (profileResult.error && 'message' in (profileResult.error as any)) console.error('[UserContext] Error fetching profile:', (profileResult.error as any).message);
-             if (statsResult.error && 'message' in (statsResult.error as any)) console.error('[UserContext] Error fetching stats:', (statsResult.error as any).message);
-             if (titleResult.error && 'message' in (titleResult.error as any)) console.error('[UserContext] Error fetching title:', (titleResult.error as any).message);
+      if (titleResult.error) {
+        console.error('[UserContext] Error fetching current title:', titleResult.error.message);
+      }
+      if (statsResult.error) {
+        console.error('[UserContext] Error fetching stats:', statsResult.error.message);
+        throw statsResult.error;
+      }
 
-             fetchedProfileData = {
-                 id: currentUserId,
-                 name: profileResult.data?.name ?? user?.user_metadata?.name ?? 'Username',
-                 level: profileResult.data?.level ?? 99,
-                 title: titleResult.data ?? { id: 't0', name: 'No Title' },
-                 completedQuestsCount: profileResult.data?.completedQuestsCount ?? 0
-             };
-             fetchedStatsData = statsResult.data ?? null;
-             initialCompletedQuestsCount = fetchedProfileData.completedQuestsCount; // Set temp variable
+      const currentTitle: UserTitle | null = titleResult.data ?? null;
+      const fetchedStatsData: UserStats | null = statsResult.data ?? null;
 
-             setProfile(fetchedProfileData);
-             setStats(fetchedStatsData);
-          }
-        } catch (err: unknown) {
-          let errorMessage = "An unknown error occurred fetching profile/stats/title";
-          if (isErrorWithMessage(err)) {
-            errorMessage = err.message;
-          }
-          console.error('[UserContext] Unexpected error fetching profile/stats/title:', errorMessage);
-          if (isMounted) { setProfile(null); setStats(null); }
-        } finally {
-          if (isMounted) setIsProfileLoading(false);
-        }
+      if (!fetchedStatsData) {
+        console.error('[UserContext] Stats data is null after fetch. Cannot proceed.');
+        throw new Error('Failed to fetch user stats.');
+      }
 
-        // --- Fetch Quests & Goals in Parallel ---
-        try {
-          const [questResult, goalResult] = await Promise.all([
-            QuestService.getQuests(),
-            RoadmapService.getGoals()
-          ]);
+      const combinedProfile: UserProfile = {
+        id: rawProfileData.id,
+        name: rawProfileData.name ?? user?.user_metadata?.name ?? 'Adventurer',
+        level: rawProfileData.level,
+        title: currentTitle,
+        completed_quests_count: rawProfileData.completed_quests_count,
+      };
 
-          if (isMounted) {
-             const fetchedQuests = questResult.data || [];
-             const fetchedGoals = goalResult.data || [];
-
-             if (questResult.error && 'message' in (questResult.error as any)) console.error('[UserContext] Error fetching quests:', (questResult.error as any).message);
-             if (goalResult.error && 'message' in (goalResult.error as any)) console.error('[UserContext] Error fetching goals:', (goalResult.error as any).message);
-
-             const goalTitleMap = new Map<string, string>();
-             fetchedGoals.forEach(goal => goalTitleMap.set(goal.id, goal.title));
-
-             const questsWithTitles: QuestWithGoalTitle[] = fetchedQuests.map(quest => ({
-               ...quest,
-               goalTitle: goalTitleMap.get(quest.goalId) || null
-             }));
-
-             setQuests(questsWithTitles);
-
-             const initialStates: Record<string, QuestWithGoalTitle> = {};
-             questsWithTitles.forEach(q => { initialStates[q.id] = { ...q }; });
-             setOriginalQuestStates(initialStates);
-           }
-        } catch (err: unknown) {
-          let errorMessage = "An unknown error occurred fetching quests/goals";
-          if (isErrorWithMessage(err)) {
-            errorMessage = err.message;
-          }
-          console.error('[UserContext] Unexpected error fetching quests or goals:', errorMessage);
-          if (isMounted) setQuests([]);
-        } finally {
-          if (isMounted) setIsQuestLoading(false);
-        }
-
-        // --- Fetch Achievement Status & Available Titles --- (Now uses temp count)
-        try {
-          setIsAchievementLoading(true);
+      const questsCount = combinedProfile.completed_quests_count ?? 0;
           const [achStatusResult, unlockedTitlesResult] = await Promise.all([
-            // Pass the fetched profile/stats/count directly
-            AchievementService.getAllAchievementsStatus(currentUserId, fetchedProfileData, fetchedStatsData, initialCompletedQuestsCount),
-            TitleService.getUnlockedTitles(currentUserId)
+        AchievementService.getAllAchievementsStatus(userId, combinedProfile, fetchedStatsData, questsCount),
+        TitleService.getUnlockedTitles(userId)
           ]);
 
           if (isMounted) {
-            if (achStatusResult.error && isErrorWithMessage(achStatusResult.error)) console.error('[UserContext] Error fetching achievement status:', achStatusResult.error.message);
-            if (unlockedTitlesResult.error && isErrorWithMessage(unlockedTitlesResult.error)) console.error('[UserContext] Error fetching unlocked titles:', unlockedTitlesResult.error.message);
+        if (achStatusResult.error) console.error('[UserContext] Error fetching achievement status:', achStatusResult.error.message);
+        if (unlockedTitlesResult.error) console.error('[UserContext] Error fetching unlocked titles:', unlockedTitlesResult.error.message);
 
+        setProfile(combinedProfile);
+        setStats(fetchedStatsData);
             setAchievementsStatus(achStatusResult.data ?? []);
             setAvailableTitles(unlockedTitlesResult.data ?? []);
-          }
-        } catch (err: unknown) {
-          let errorMessage = "An unknown error occurred fetching achievements/titles";
-          if (isErrorWithMessage(err)) errorMessage = err.message;
-          console.error('[UserContext] Unexpected error fetching achievements/titles:', errorMessage);
-          if (isMounted) { setAchievementsStatus([]); setAvailableTitles([]); }
-        } finally {
-           if (isMounted) setIsAchievementLoading(false);
-        }
-
-      } else if (isMounted) {
-          setIsProfileLoading(false);
-          setIsQuestLoading(false);
-          setIsAchievementLoading(false);
-          setProfile(null);
-          setStats(null);
-          setQuests([]);
-          setAchievementsStatus([]);
-          setAvailableTitles([]);
+        setIsProfileLoading(false);
+        setIsAchievementLoading(false);
       }
 
-      // Set global loading false only after all initial data loads finish
-      if (isMounted) setIsLoading(false);
+    } catch (err: unknown) {
+      console.error('[UserContext] Error during comprehensive user data fetch:', err);
+      if (isMounted) {
+          setProfile(null);
+          setStats(null);
+          setAchievementsStatus([]);
+          setAvailableTitles([]);
+        setIsProfileLoading(false);
+        setIsAchievementLoading(false);
+        // Optionally sign out if critical fetch fails
+        // await handleSignOut();
+      }
+    } finally {
+        if (isMounted) {
+         setIsLoading(false);
+      }
     }
 
-    loadInitialData();
+    return () => { isMounted = false; };
 
-    // --- Auth Listener Setup ---
-    const { data: { subscription } } = AccountService.onAuthStateChange((event, currentSession) => {
+  }, [user?.user_metadata?.name, handleSignOut]);
+
+  // --- Auth State Change Listener ---
+  useEffect(() => {
+    let isMounted = true;
+    async function initialLoad() {
+      const { session: initialSession, error: sessionError } = await AccountService.getSession();
       if (!isMounted) return;
-      console.log(`[UserContext] AccountService event: ${event}, Session:`, currentSession ? 'Exists' : 'Null', 'User:', currentSession?.user?.id);
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
+      if (sessionError) console.error('[UserContext] Error checking session:', sessionError.message);
 
-      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && currentSession?.user) {
-        console.log(`[UserContext] Refetching ALL data for user ${currentSession.user.id} after ${event}...`);
-        setIsLoading(true);
-        setIsProfileLoading(true);
-        setIsQuestLoading(true);
-        setIsAchievementLoading(true);
+      setSession(initialSession);
+      const initialUser = initialSession?.user ?? null;
+      setUser(initialUser);
+
+      if (initialUser) {
+        console.log(`[UserContext] Initial load for user: ${initialUser.id}`);
+        const cleanupFetch = await fetchAllUserData(initialUser.id);
+
+        // Check warning status only if user exists and component is mounted
+        try {
+          const dismissedStatus = await UserService.isWarningDismissedToday(initialUser.id);
+          if (isMounted) setIsWarningDismissedToday(dismissedStatus);
+        } catch (err) {
+          console.error('[UserContext] Failed to check warning dismissal status:', err);
+          if (isMounted) setIsWarningDismissedToday(false);
+        }
+        return cleanupFetch; // Return cleanup from fetchAllUserData
+
+      } else {
+        console.log('[UserContext] No initial user session found. Clearing state.');
         setProfile(null);
         setStats(null);
-        setQuests([]);
-        setAchievementsStatus([]);
-        setAvailableTitles([]);
-        setOriginalQuestStates({});
-        loadInitialData();
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setProfile(null);
-        setStats(null);
-        setQuests([]);
-        setOriginalQuestStates({});
         setAchievementsStatus([]);
         setAvailableTitles([]);
         setIsLoading(false);
         setIsProfileLoading(false);
-        setIsQuestLoading(false);
         setIsAchievementLoading(false);
+        setIsWarningDismissedToday(false);
+      }
+    }
+
+    const initialLoadCleanupPromise = initialLoad();
+
+    const { data: { subscription } } = AccountService.onAuthStateChange(async (event, currentSession) => {
+      if (!isMounted) return;
+      console.log(`[UserContext] Auth Event: ${event}, User: ${currentSession?.user?.id ?? 'null'}`);
+      setSession(currentSession);
+      const currentUser = currentSession?.user ?? null;
+      setUser(currentUser);
+
+      if (event === 'SIGNED_IN' && currentUser) {
+        console.log(`[UserContext] Triggering user data load on SIGNED_IN for ${currentUser.id}...`);
+        await fetchAllUserData(currentUser.id);
+      } else if (event === 'SIGNED_OUT') {
+        console.log('[UserContext] Clearing user data on SIGNED_OUT...');
+        setProfile(null);
+        setStats(null);
+        setAchievementsStatus([]);
+        setAvailableTitles([]);
+        setIsLoading(false);
+        setIsProfileLoading(false);
+        setIsAchievementLoading(false);
+        setIsWarningDismissedToday(false);
+      } else if (event === 'USER_UPDATED' && currentUser && profile) {
+          // USER_UPDATED might mean metadata changes (e.g., name) or DB changes
+          // Fetching all data ensures consistency
+          console.log(`[UserContext] USER_UPDATED event for ${currentUser.id}. Refetching all user data...`);
+          await fetchAllUserData(currentUser.id);
       }
     });
 
     return () => {
       isMounted = false;
       subscription?.unsubscribe();
+      initialLoadCleanupPromise.then(cleanup => { if (typeof cleanup === 'function') cleanup(); });
     };
-  }, []);
+  }, [fetchAllUserData]); // fetchAllUserData depends on handleSignOut, which is stable
 
-
-  // --- Sign In/Out Handlers (Delegate to AccountService) ---
+  // --- Apple Sign In ---
   const handleSignInWithApple = useCallback(async () => {
     setIsLoading(true);
     const { error } = await AccountService.signInWithApple();
@@ -349,572 +298,191 @@ export function UserProvider({ children }: UserProviderProps) {
         console.error('[UserContext] Apple Sign-In failed:', error.message);
         setIsLoading(false);
     }
+    // Auth state change listener will trigger fetchAllUserData
     return { error };
   }, []);
 
-  const handleSignOut = useCallback(async () => {
-    setIsLoading(true);
-    const { error } = await AccountService.signOut();
-    if (error) {
-        console.error('[UserContext] Sign Out failed:', error.message);
-         setIsLoading(false);
-    }
-    return { error };
-  }, []);
+  // handleSignOut defined earlier
 
-  // --- Profile Update Handler ---
-  const handleUpdateUserProfile = useCallback(async (profileData: UserProfileUpdateData) => {
-    if (!profile?.id) {
-        console.error('[UserContext] Cannot update profile, user ID not available.');
-        return { error: new Error("User not available") };
+  // --- Update User Profile ---
+  const handleUpdateUserProfile = useCallback(async (profileData: UserProfileUpdateData): Promise<{ error: Error | null }> => {
+    if (!profile?.id || !user?.id) {
+        const err = new Error("User not available for profile update.");
+        console.error(`[UserContext] ${err.message}`);
+        return { error: err };
     }
+    const userId = user.id;
     console.log('[UserContext] Updating profile with:', profileData);
+    setIsProfileLoading(true);
+    let updateError: Error | null = null;
 
-    const error = null;
-    setProfile(currentProfile => {
-        if (!currentProfile) return null;
-        return {
-            ...currentProfile,
-            ...profileData,
-        };
-    });
-    setUser(currentUser => {
-        if (!currentUser) return null;
-        return {
-            ...currentUser,
-            user_metadata: {
-                ...(currentUser.user_metadata || {}),
-                ...profileData,
-            },
-             updated_at: new Date().toISOString(),
-        };
-    });
-    console.log('[UserContext] Profile update simulated successfully.');
-    return { error };
-  }, [profile]);
+    try {
+      const { data: updatedDbProfile, error: serviceError } = await AccountService.updateProfile(userId, profileData);
+      if (serviceError) throw serviceError;
+      if (!updatedDbProfile) throw new Error('Profile update failed to return data.');
 
-  // --- Title Update Handler ---
-  const handleUpdateTitle = useCallback(async (titleId: string) => {
-      if (!profile?.id) {
-          console.error('[UserContext] Cannot update equipped title, user ID not available.');
-          return { error: new Error("User not available") };
-      }
-      console.log(`[UserContext] Attempting to update *equipped* title to ${titleId} for user ${profile.id}`);
-      const originalProfile = profile ? { ...profile } : null;
+      // Profile updated successfully in DB, refetch all user data to ensure context consistency
+      // This simplifies state management as fetchAllUserData handles combining profile, titles, stats, achievements
+      console.log('[UserContext] Profile updated in DB, refetching all user data...');
+      await fetchAllUserData(userId);
 
-      const newTitle = availableTitles.find(t => t.id === titleId);
-      if (!newTitle) {
-          console.error(`[UserContext] Cannot equip title ${titleId}: Not found in available titles.`);
-          return { error: new Error("Title not available to equip") };
-      }
-
-      setProfile(currentProfile => currentProfile ? { ...currentProfile, title: newTitle } : null);
-
-      const { error } = await TitleService.updateTitle(profile.id, titleId);
-      if (error) {
-          console.error(`[UserContext] Failed to update equipped title for user ${profile.id}:`, error.message);
-          setProfile(originalProfile);
-      } else {
-          console.log(`[UserContext] Equipped title updated successfully for user ${profile.id}.`);
-      }
-      return { error };
-  }, [profile, availableTitles]);
-
-  // --- MODIFIED: Stat Bonus Increment Handlers ---
-  const handleIncrementStatBonus = useCallback(async (statLabel: string, amount: number) => {
-    if (!profile?.id || !stats) return { error: new Error("User or stats not available") };
-    if (statLabel === 'DIS') return { error: null }; // Handled separately
-
-    const originalStats = { ...stats };
-    let error: Error | null = null;
-
-    // Update local state
-    setStats(currentStats => {
-      if (!currentStats || !currentStats[statLabel]) return currentStats;
-      const newBonus = currentStats[statLabel].bonus + amount;
-      const newTotalValue = currentStats[statLabel].baseValue + newBonus;
-      return {
-        ...currentStats,
-        [statLabel]: {
-          ...currentStats[statLabel],
-          bonus: newBonus,
-          totalValue: newTotalValue,
-        }
-      };
-    });
-
-    // Trigger notification via service hook (now context hook)
-    addStatNotification(statLabel, amount);
-
-    // Call backend service
-    ({ error } = await StatService.incrementStatBonus(profile.id, statLabel, amount));
-    if (error) {
-      console.error(`[UserContext] Failed backend update for ${statLabel} bonus:`, error.message);
-      setStats(originalStats);
+    } catch (err) {
+        console.error('[UserContext] Error updating user profile:', err);
+        updateError = new Error(getErrorMessage(err));
+    } finally {
+        setIsProfileLoading(false);
     }
-    return { error };
+    return { error: updateError };
+  }, [user?.id, fetchAllUserData]); // Depend on fetchAllUserData
 
-  }, [profile, stats, addStatNotification]); // Keep addNotification dependency
+  // --- Update Title ---
+  const handleUpdateTitle = useCallback(async (titleId: string | null) => {
+    console.log(`[UserContext] Updating title to: ${titleId}`);
+    // Just call the profile update service directly
+    return handleUpdateUserProfile({ title_id: titleId });
+  }, [handleUpdateUserProfile]);
 
-  const handleIncrementDisciplineBonus = useCallback(async (amount: number) => {
-      if (!profile?.id || !stats) return { error: new Error("User or stats not available") };
-      const statLabel = 'DIS';
-      const originalStats = { ...stats };
-      let error: Error | null = null;
+  // --- Increment Stat Bonus ---
+  const handleIncrementStatBonus = useCallback(async (statLabel: string, amount: number): Promise<{ error: Error | null }> => {
+    if (!user?.id) return { error: new Error("User not available") };
+    const userId = user.id;
+    console.log(`[UserContext] Incrementing ${statLabel} bonus by ${amount}`);
+    let incrementError: Error | null = null;
+    try {
+      const result = await StatService.incrementStatBonus(userId, statLabel, amount);
+      if (result.error) throw result.error;
 
-      // Update local state
-      setStats(currentStats => {
-        if (!currentStats || !currentStats[statLabel]) return currentStats;
-         const newBonus = currentStats[statLabel].bonus + amount;
-         const newTotalValue = currentStats[statLabel].baseValue + newBonus;
-        return {
-          ...currentStats,
-          [statLabel]: {
-            ...currentStats[statLabel],
-            bonus: newBonus,
-            totalValue: newTotalValue,
-          }
-        };
-      });
+      // Stat updated successfully in DB (cache invalidated by service), refetch all data
+      console.log(`[UserContext] Stat ${statLabel} bonus updated, refetching all user data...`);
+      await fetchAllUserData(userId);
 
-      // Trigger notification via service hook (now context hook)
-      addStatNotification(statLabel, amount);
-
-      // Call backend service
-      ({ error } = await StatService.incrementDisciplineBonus(profile.id, amount));
-      if (error) {
-        console.error(`[UserContext] Failed backend update for DIS bonus:`, error.message);
-        setStats(originalStats);
-      }
-      return { error };
-  }, [profile, stats, addStatNotification]); // Keep addNotification dependency
-
-  // --- REFACTORED: Quest Handlers (Using helpers defined earlier) ---
-  const handleCompleteQuest = useCallback(async (id: string) => {
-    console.log(`[UserContext] Calling QuestService.completeQuest for ${id}`);
-    // Pass only the base Quest objects to the service
-    const baseQuests = quests.map(({ goalTitle, ...rest }) => rest);
-
-    const { updatedQuest, updatedOriginalStates, error } = await QuestService.completeQuest(
-      id,
-      baseQuests,
-      originalQuestStates // Still pass original states (might need adjustment if service returns Quest only)
-    );
-
-    if (error || !updatedQuest) {
-      console.error(`[UserContext] QuestService.completeQuest failed for ${id}:`, error?.message);
-      // Handle error appropriately (e.g., show notification to user)
-      return;
+    } catch (err) {
+      console.error(`[UserContext] Error incrementing ${statLabel} bonus:`, err);
+      incrementError = new Error(getErrorMessage(err));
     }
+    return { error: incrementError };
+  }, [user?.id, fetchAllUserData]); // Depend on fetchAllUserData
 
-    // Update local states
-    setQuests(prevQuests => prevQuests.map(q => q.id === id ? { ...updatedQuest, goalTitle: q.goalTitle } : q));
-    // Map goalTitle back onto the original states returned by the service
-    const updatedOriginalStatesWithTitle: Record<string, QuestWithGoalTitle> = {};
-    for (const questId in updatedOriginalStates) {
-      const originalQuest = updatedOriginalStates[questId];
-      const currentQuest = quests.find(q => q.id === questId); // Find current quest to get title
-      updatedOriginalStatesWithTitle[questId] = {
-        ...originalQuest,
-        goalTitle: currentQuest ? currentQuest.goalTitle : null, // Add goalTitle back
-      };
+  // --- Increment Discipline Bonus ---
+  const handleIncrementDisciplineBonus = useCallback(async (amount: number): Promise<{ error: Error | null }> => {
+    if (!user?.id) return { error: new Error("User not available") };
+    const userId = user.id;
+    console.log(`[UserContext] Incrementing Discipline bonus by ${amount}`);
+    let incrementError: Error | null = null;
+     try {
+      const result = await StatService.incrementDisciplineBonus(userId, amount);
+      if (result.error) throw result.error;
+
+      // Discipline updated successfully in DB (cache invalidated by service), refetch all data
+      console.log(`[UserContext] Discipline bonus updated, refetching all user data...`);
+      await fetchAllUserData(userId);
+
+    } catch (err) {
+      console.error(`[UserContext] Error incrementing Discipline bonus:`, err);
+      incrementError = new Error(getErrorMessage(err));
     }
-    setOriginalQuestStates(updatedOriginalStatesWithTitle);
+    return { error: incrementError };
+  }, [user?.id, fetchAllUserData]); // Depend on fetchAllUserData
 
-    // --- Stat Update Logic ---
-    console.log(`[UserContext] Quest ${id} completed via Service. Triggering stat updates.`);
-    // Use the specific discipline amount if provided, otherwise default
-    const disciplineAmount = updatedQuest.disciplineIncrementAmount ?? DEFAULT_STAT_INCREMENT_ON_QUEST_COMPLETE;
-    
-    // Always increment Discipline
-    console.log(` -> Always incrementing DIS by ${disciplineAmount}`);
-    await handleIncrementDisciplineBonus(disciplineAmount);
+  // --- Claim Achievement ---
+  const handleClaimAchievement = useCallback(async (achievementId: string): Promise<{ error: Error | null }> => {
+    if (!user?.id || !profile || !stats) return { error: new Error("User, profile, or stats not available") };
+    const userId = user.id;
+    console.log(`[UserContext] Claiming achievement: ${achievementId}`);
+    setIsAchievementLoading(true);
+    let claimError: Error | null = null;
 
-    // Loop through EXPLICIT stat increments (already excludes DIS)
-    for (const increment of updatedQuest.statIncrements) {
-      const { category, amount } = increment;
-      if (category === 'DIS') continue;
-      
-      console.log(` -> Incrementing explicit ${category} by ${amount}`);
-      if (stats && stats[category]) {
-        await handleIncrementStatBonus(category, amount);
-      } else {
-        console.warn(`[UserContext] Explicit stat category ${category} not found in user stats or is invalid.`);
-      }
-    }
-    // --- End Stat Update Logic ---
-
-    // --- Add Quest Notification --- 
-    if (updatedQuest.title) { // Check if title exists
-        addQuestNotification('Completed', updatedQuest.title);
-    }
-    // --------------------------- 
-
-    incrementCompletedQuestCount();
-
-    // TODO: Re-evaluate achievement status after quest completion? Or rely on screen refresh.
-    // Example: Check achievements immediately (could be slightly delayed)
-    // if (profile && stats && user) {
-    //   AchievementService.getAllAchievementsStatus(user.id, profile, stats, profile.completedQuestsCount)
-    //     .then(({ data }) => data && setAchievementsStatus(data));
-    // }
-
-  }, [quests, stats, originalQuestStates, handleIncrementDisciplineBonus, handleIncrementStatBonus, addQuestNotification, incrementCompletedQuestCount, profile, user]);
-
-  const handleSkipQuest = useCallback(async (id: string) => {
-    console.log(`[UserContext] Calling QuestService.skipQuest for ${id}`);
-    const baseQuests = quests.map(({ goalTitle, ...rest }) => rest);
-
-    const { updatedQuest, updatedOriginalStates, error } = await QuestService.skipQuest(
-      id,
-      baseQuests,
-      originalQuestStates
-    );
-
-    if (error || !updatedQuest) {
-      console.error(`[UserContext] QuestService.skipQuest failed for ${id}:`, error?.message);
-      return;
-    }
-
-    setQuests(prevQuests => prevQuests.map(q => q.id === id ? { ...updatedQuest, goalTitle: q.goalTitle } : q));
-    // Map goalTitle back onto the original states returned by the service
-    const updatedOriginalStatesWithTitle_Skip: Record<string, QuestWithGoalTitle> = {};
-    for (const questId in updatedOriginalStates) {
-      const originalQuest = updatedOriginalStates[questId];
-      const currentQuest = quests.find(q => q.id === questId);
-      updatedOriginalStatesWithTitle_Skip[questId] = {
-        ...originalQuest,
-        goalTitle: currentQuest ? currentQuest.goalTitle : null,
-      };
-    }
-    setOriginalQuestStates(updatedOriginalStatesWithTitle_Skip);
-
-    // --- Add Quest Notification --- 
-    if (updatedQuest.title) { // Check if title exists
-        addQuestNotification('Skipped', updatedQuest.title);
-    }
-    // --------------------------- 
-
-    // Note: Skipping usually doesn't count towards completion achievements
-
-  }, [quests, originalQuestStates, addQuestNotification]);
-
-  const handleIncrementQuestProgress = useCallback(async (id: string) => {
-    console.log(`[UserContext] Calling QuestService.incrementQuestProgress for ${id}`);
-    const baseQuests = quests.map(({ goalTitle, ...rest }) => rest);
-
-    const { updatedQuest, updatedOriginalStates, requiresStatUpdate, error } = await QuestService.incrementQuestProgress(
-      id,
-      baseQuests,
-      originalQuestStates
-    );
-
-    if (error || !updatedQuest) {
-      console.error(`[UserContext] QuestService.incrementQuestProgress failed for ${id}:`, error?.message);
-      return;
-    }
-
-    setQuests(prevQuests => prevQuests.map(q => q.id === id ? { ...updatedQuest, goalTitle: q.goalTitle } : q));
-    // Map goalTitle back onto the original states returned by the service
-    const updatedOriginalStatesWithTitle_Inc: Record<string, QuestWithGoalTitle> = {};
-    for (const questId in updatedOriginalStates) {
-      const originalQuest = updatedOriginalStates[questId];
-      const currentQuest = quests.find(q => q.id === questId);
-      updatedOriginalStatesWithTitle_Inc[questId] = {
-        ...originalQuest,
-        goalTitle: currentQuest ? currentQuest.goalTitle : null,
-      };
-    }
-    setOriginalQuestStates(updatedOriginalStatesWithTitle_Inc);
-
-    if (requiresStatUpdate) {
-        console.log(`[UserContext] Quest ${id} completed via Service increment. Triggering stat updates.`);
-        // Use the specific discipline amount if provided, otherwise default
-        const disciplineAmount = updatedQuest.disciplineIncrementAmount ?? DEFAULT_STAT_INCREMENT_ON_QUEST_COMPLETE;
-        
-        // Always increment Discipline
-        console.log(` -> Always incrementing DIS by ${disciplineAmount}`);
-        await handleIncrementDisciplineBonus(disciplineAmount);
-
-        // Loop through EXPLICIT stat increments (already excludes DIS)
-        for (const increment of updatedQuest.statIncrements) {
-          const { category, amount } = increment;
-          if (category === 'DIS') continue;
-          
-          console.log(` -> Incrementing explicit ${category} by ${amount}`);
-          if (stats && stats[category]) {
-            await handleIncrementStatBonus(category, amount);
-          } else {
-            console.warn(`[UserContext] Explicit stat category ${category} not found in user stats or is invalid.`);
-          }
-        }
-    }
-
-    // --- Add Quest Notification for Auto-Completion --- 
-    if (requiresStatUpdate && updatedQuest.title) { // Check if title exists
-        addQuestNotification('Completed', updatedQuest.title);
-    }
-    // -------------------------------------------- 
-
-    incrementCompletedQuestCount();
-
-  }, [quests, stats, originalQuestStates, handleIncrementDisciplineBonus, handleIncrementStatBonus, addQuestNotification, incrementCompletedQuestCount, profile, user]);
-
-  const handleDecrementQuestProgress = useCallback(async (id: string) => {
-     console.log(`[UserContext] Calling QuestService.decrementQuestProgress for ${id}`);
-     const baseQuests = quests.map(({ goalTitle, ...rest }) => rest);
-
-     const { updatedQuest, error } = await QuestService.decrementQuestProgress(id, baseQuests);
-
-     if (error || !updatedQuest) {
-       console.error(`[UserContext] QuestService.decrementQuestProgress failed for ${id}:`, error?.message);
-       return;
-     }
-
-     setQuests(prevQuests => prevQuests.map(q => q.id === id ? { ...updatedQuest, goalTitle: q.goalTitle } : q));
-
-  }, [quests]);
-
-  const handleSetQuestProgress = useCallback(async (id: string, count: number) => {
-      console.log(`[UserContext] Calling QuestService.setQuestProgress for ${id} to ${count}`);
-      const baseQuests = quests.map(({ goalTitle, ...rest }) => rest);
-
-      const { updatedQuest, updatedOriginalStates, requiresStatUpdate, error } = await QuestService.setQuestProgress(
-        id,
-        count,
-        baseQuests,
-        originalQuestStates
-      );
-
-      if (error || !updatedQuest) {
-          console.error(`[UserContext] QuestService.setQuestProgress failed for ${id}:`, error?.message);
-          return;
-      }
-
-      setQuests(prevQuests => prevQuests.map(q => q.id === id ? { ...updatedQuest, goalTitle: q.goalTitle } : q));
-      // Map goalTitle back onto the original states returned by the service
-      const updatedOriginalStatesWithTitle_Set: Record<string, QuestWithGoalTitle> = {};
-      for (const questId in updatedOriginalStates) {
-        const originalQuest = updatedOriginalStates[questId];
-        const currentQuest = quests.find(q => q.id === questId);
-        updatedOriginalStatesWithTitle_Set[questId] = {
-          ...originalQuest,
-          goalTitle: currentQuest ? currentQuest.goalTitle : null,
-        };
-      }
-      setOriginalQuestStates(updatedOriginalStatesWithTitle_Set);
-
-      if (requiresStatUpdate) {
-          console.log(`[UserContext] Quest ${id} completed via Service set progress. Triggering stat updates.`);
-          // Use the specific discipline amount if provided, otherwise default
-          const disciplineAmount = updatedQuest.disciplineIncrementAmount ?? DEFAULT_STAT_INCREMENT_ON_QUEST_COMPLETE;
-          
-          // Always increment Discipline
-          console.log(` -> Always incrementing DIS by ${disciplineAmount}`);
-          await handleIncrementDisciplineBonus(disciplineAmount);
-
-          // Loop through EXPLICIT stat increments (already excludes DIS)
-          for (const increment of updatedQuest.statIncrements) {
-            const { category, amount } = increment;
-            if (category === 'DIS') continue;
-            
-            console.log(` -> Incrementing explicit ${category} by ${amount}`);
-            if (stats && stats[category]) {
-              await handleIncrementStatBonus(category, amount);
-            } else {
-              console.warn(`[UserContext] Explicit stat category ${category} not found in user stats or is invalid.`);
-            }
-          }
-      }
-
-      // --- Add Quest Notification --- 
-      if (updatedQuest.title) { // Check if title exists
-          addQuestNotification('Undone', updatedQuest.title);
-      }
-      // --------------------------- 
-
-      incrementCompletedQuestCount();
-
-  }, [quests, stats, originalQuestStates, handleIncrementDisciplineBonus, handleIncrementStatBonus, addQuestNotification, incrementCompletedQuestCount, profile, user]);
-
-  const handleUndoQuestStatus = useCallback(async (id: string) => {
-    console.log(`[UserContext] Calling QuestService.undoQuestStatus for ${id}`);
-
-    const { updatedQuest, requiresStatDecrement, error } = await QuestService.undoQuestStatus(
-      id,
-      originalQuestStates
-    );
-
-    if (error || !updatedQuest) {
-        console.error(`[UserContext] QuestService.undoQuestStatus failed for ${id}:`, error?.message);
-        return;
-    }
-
-    // Find the corresponding quest in the current state to get the goalTitle
-    const currentQuest = quests.find(q => q.id === id);
-    const goalTitleToKeep = currentQuest ? currentQuest.goalTitle : null;
-
-    setQuests(prevQuests => prevQuests.map(q => q.id === id ? { ...updatedQuest, goalTitle: goalTitleToKeep } : q));
-
-    // Note: originalQuestStates doesn't need updating on undo, it holds the pre-complete state.
-
-    if (requiresStatDecrement) {
-        const originalQuestForDecrement = originalQuestStates[id];
-        if (originalQuestForDecrement && originalQuestForDecrement.statIncrements) {
-            console.log(`[UserContext] Quest ${id} status undone via Service. Triggering stat decrements.`);
-            // Use the specific discipline amount (negated) if provided, otherwise default
-            const disciplineDecrementAmount = -(originalQuestForDecrement.disciplineIncrementAmount ?? DEFAULT_STAT_INCREMENT_ON_QUEST_COMPLETE);
-            
-            // Always decrement Discipline
-            console.log(` -> Always decrementing DIS by ${disciplineDecrementAmount}`);
-            await handleIncrementDisciplineBonus(disciplineDecrementAmount); 
-
-            // Loop through EXPLICIT stat increments (excluding DIS) for decrement
-            for (const increment of originalQuestForDecrement.statIncrements) {
-              const { category, amount } = increment;
-              if (category === 'DIS') continue; // Skip DIS
-
-              const decrementAmount = -amount; // Negate the original amount
-              console.log(` -> Decrementing explicit ${category} by ${amount} (applying ${decrementAmount})`);
-              if (stats && stats[category]) {
-                await handleIncrementStatBonus(category, decrementAmount); 
-              } else {
-                 console.warn(`[UserContext] Explicit stat category ${category} not found in user stats or is invalid during undo.`);
-              }
-            }
-        } else {
-             console.warn(`[UserContext] Could not find original state or explicit statIncrements for quest ${id} to calculate stat decrement.`);
-        }
-    }
-
-    decrementCompletedQuestCount();
-  }, [quests, stats, originalQuestStates, handleIncrementDisciplineBonus, handleIncrementStatBonus, addQuestNotification, decrementCompletedQuestCount, profile, user]);
-
-  // --- NEW: Achievement Claim Handler ---
-  const handleClaimAchievement = useCallback(async (achievementId: string) => {
-    if (!profile || !stats || !user) {
-      console.error("[UserContext] Cannot claim achievement: User data not loaded.");
-      return { error: new Error("User data not loaded") };
-    }
-
-    // Optimistically find the current status
-    const currentStatus = achievementsStatus.find(s => s.id === achievementId);
-    if (!currentStatus || !currentStatus.canClaim) {
-      console.warn(`[UserContext] Cannot claim achievement ${achievementId}: Not claimable.`);
-      return { error: new Error("Achievement not claimable") };
-    }
-
-    const originalStatus = { ...currentStatus };
-    const originalAvailableTitles = [...availableTitles];
-
-    // Optimistically update UI state
-    setAchievementsStatus(prev =>
-      prev.map(s => s.id === achievementId ? { ...s, isClaimed: true, canClaim: false } : s)
-    );
-
-    // Call the service to perform the claim and grant rewards
-    const { data: updatedStatus, error } = await AchievementService.claimAchievementReward(
-      user.id,
+    try {
+      // Call service with all required arguments
+      const result = await AchievementService.claimAchievementReward(
+          userId,
       achievementId,
       profile,
       stats,
-      profile.completedQuestsCount
-    );
-
-    if (error || !updatedStatus) {
-      console.error(`[UserContext] Failed to claim achievement ${achievementId}:`, error?.message);
-      // Revert optimistic update
-      setAchievementsStatus(prev =>
-          prev.map(s => s.id === achievementId ? originalStatus : s)
+          profile.completed_quests_count // Pass the current count
       );
-      return { error: error || new Error("Claim failed") };
-    } else {
-      console.log(`[UserContext] Achievement ${achievementId} claimed successfully.`);
-      const definition = getAchievementDefinition(achievementId);
-      const newTitleReward = definition?.rewards.find(r => r.type === 'title') as TitleReward | undefined;
 
-      // Add achievement notification regardless of reward type
-      if (definition) {
-          addAchievementNotification(definition.title);
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error('Claim achievement reward returned no data.'); // Should have UserAchievementStatus
+
+      // Rewards granted (e.g., title) & achievement marked claimed in DB
+      // Refetch ALL user data to reflect potential profile changes (new title), updated achievement status list, etc.
+      console.log(`[UserContext] Achievement ${achievementId} claimed, refetching all user data...`);
+      await fetchAllUserData(userId);
+
+      // Optionally show popup based on the *refetched* data or keep simple logic
+      const claimedAchievementDef = getAchievementDefinition(achievementId);
+      const titleReward = claimedAchievementDef?.rewards.find(r => r.type === 'title') as TitleReward | undefined;
+      if (titleReward) {
+          // Fetch the title details IF needed for the popup message, otherwise just show generic success
+          // For simplicity, let's assume the title name isn't needed for the popup here
+          // Or find the title from the *newly fetched* availableTitles state after fetchAllUserData finishes
+          setNewTitlePopupState({ visible: true, titleName: titleReward.titleId }); // Using ID for now
       }
 
-      // Handle title reward specifically
-      if (newTitleReward) {
-        console.log(`[UserContext] Achievement ${achievementId} included a title reward. Refetching available titles and showing popup...`);
-        const { data: newTitles, error: titleError } = await TitleService.getUnlockedTitles(user.id);
-        if (titleError) {
-          console.error("[UserContext] Failed to refetch titles after claim:", titleError.message);
-          setAvailableTitles(originalAvailableTitles); // Revert title list on error
-        } else {
-          const newlyGrantedTitle = newTitles?.find(t => t.id === newTitleReward.titleId);
-          setAvailableTitles(newTitles ?? []); // Update available titles
-          // Show the popup
-          if (newlyGrantedTitle) {
-              setNewTitlePopupState({ visible: true, titleName: newlyGrantedTitle.name });
-          }
-        }
-      } else {
-          // If no title reward, ensure the popup isn't triggered/remains closed
-          // (This check might be redundant if state defaults to non-visible, but good for clarity)
-          if (newTitlePopupState.visible) {
-              setNewTitlePopupState({ visible: false, titleName: null });
-          }
-      }
-      return { error: null };
+    } catch (err) {
+      console.error(`[UserContext] Error claiming achievement:`, err);
+      claimError = new Error(getErrorMessage(err));
+    } finally {
+      setIsAchievementLoading(false);
     }
-  }, [profile, stats, user, achievementsStatus, availableTitles, addAchievementNotification, newTitlePopupState.visible]); // Added newTitlePopupState.visible dependency
+    return { error: claimError };
+  }, [user?.id, profile, stats, fetchAllUserData]); // Depend on fetchAllUserData
 
-  // --- Function to close the title popup ---
-  const closeNewTitlePopup = useCallback(() => {
+  // --- Close New Title Popup ---
+  const handleCloseNewTitlePopup = useCallback(() => {
       setNewTitlePopupState({ visible: false, titleName: null });
   }, []);
 
-  // --- Context Value ---
-  const value = useMemo(() => {
-      // Determine overall loading state
-      const combinedLoading = isLoading || isQuestLoading || isProfileLoading || isAchievementLoading;
-      return {
+  // --- Dismiss Daily Warning ---
+  const handleDismissWarning = useCallback(async () => {
+      if (!user?.id) return;
+      try {
+        await UserService.dismissWarningForToday(user.id);
+        setIsWarningDismissedToday(true);
+      } catch (err) {
+        console.error('[UserContext] Failed to dismiss warning:', err);
+      }
+  }, [user?.id]);
+
+  // --- Context Value Memo ---
+  const contextValue = useMemo(() => ({
           session,
           user,
           profile,
           stats,
-          isLoading: combinedLoading, // Use combined loading state
+    isLoading: isLoading || isProfileLoading || isAchievementLoading,
+    isProfileLoading,
+    isAchievementLoading,
           signInWithApple: handleSignInWithApple,
           signOut: handleSignOut,
           updateUserProfile: handleUpdateUserProfile,
           updateTitle: handleUpdateTitle,
-          quests,
-          completeQuest: handleCompleteQuest,
-          skipQuest: handleSkipQuest,
-          incrementQuestProgress: handleIncrementQuestProgress,
-          decrementQuestProgress: handleDecrementQuestProgress,
-          setQuestProgress: handleSetQuestProgress,
-          undoQuestStatus: handleUndoQuestStatus,
-          // Achievement values
           achievementsStatus,
           claimAchievement: handleClaimAchievement,
           availableTitles,
-          // Add popup state and closer function
-          newTitlePopupState,
-          closeNewTitlePopup,
-      };
-  }, [
-    session, user, profile, stats, isLoading, isQuestLoading, isProfileLoading, isAchievementLoading,
-    quests, achievementsStatus, availableTitles,
-    handleSignInWithApple, handleSignOut, handleUpdateUserProfile, handleUpdateTitle,
-    handleCompleteQuest, handleSkipQuest, handleIncrementQuestProgress,
-    handleDecrementQuestProgress, handleSetQuestProgress, handleUndoQuestStatus,
-    handleClaimAchievement,
-    addStatNotification, addQuestNotification, addAchievementNotification,
-    // Add popup state and closer function to dependencies
     newTitlePopupState,
-    closeNewTitlePopup
+    closeNewTitlePopup: handleCloseNewTitlePopup,
+    isWarningDismissedToday,
+    dismissWarning: handleDismissWarning,
+    handleIncrementStatBonus,
+    handleIncrementDisciplineBonus,
+  }), [
+    session, user, profile, stats, isLoading, isProfileLoading, isAchievementLoading,
+    achievementsStatus, availableTitles, newTitlePopupState, isWarningDismissedToday,
+    handleSignInWithApple, handleSignOut, handleUpdateUserProfile, handleUpdateTitle,
+    handleClaimAchievement, handleCloseNewTitlePopup, handleDismissWarning,
+    handleIncrementStatBonus, handleIncrementDisciplineBonus
   ]);
 
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+  return (
+    <UserContext.Provider value={contextValue}>
+      {children}
+    </UserContext.Provider>
+  );
 }
 
-// Custom hook to use the UserContext
+// --- Custom Hook ---
 export function useAuth() {
   const context = useContext(UserContext);
   if (context === undefined) {

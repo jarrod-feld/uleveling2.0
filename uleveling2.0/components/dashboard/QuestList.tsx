@@ -37,7 +37,7 @@ function QuestListComponent({ // Renamed component for clarity
       renderItem={({ item }) => (
         <Animated.View // Wrap QuestCard in Animated.View
           key={item.id} // Keep key here for animation tracking
-          exiting={FadeOut.duration(250)} // Add fade out animation
+          exiting={FadeOut.duration(50)} // Make the fade out duration much shorter for faster disappearance
         >
           <QuestCard 
             item={item} 

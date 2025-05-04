@@ -7,15 +7,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
+  Text,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
+  Button,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Asset } from 'expo-asset';
 import { scale, verticalScale, moderateScale } from '@/constants/scaling';
 import AccountService from '@/services/AccountService';
+import UserService from '@/services/UserService';
+import AIService from '@/services/AIService';
+import StatService from '@/services/StatService';
+import RoadmapService from '@/services/RoadmapService';
+import QuestService from '@/services/QuestService';
+import { useAuth } from '@/contexts/UserContext';
+import { Quest } from '@/mock/dashboardData';
 // Remove context/type imports
 // import { OnboardingProvider } from '@/context/OnboardingContext';
 // import { StepProps } from '@/types/onboarding';
@@ -84,10 +94,20 @@ interface StepProps { /* ... existing fields ... */ }
 // Restore original export
 export default function OnboardingIndex() {
   const router = useRouter();
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // Loading state for auth check
-
-  /* ------------ preload assets ------------ */
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [assetsReady, setAssetsReady] = useState(false);
+
+  const [step, setStep] = useState<number>(0);
+  const [queuedStep, setQueuedStep] = useState<number | null>(null);
+  const [popupVisible, setPopupVisible] = useState(true);
+  const [onboardingData, setOnboardingData] = useState<OnboardingData>({});
+  const [isStepValid, setStepValid] = useState<boolean>(true);
+  const [isNavigating, setIsNavigating] = useState<boolean>(false);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  const { user } = useAuth();
+  const userId = user?.id;
 
   useEffect(() => {
     (async () => {
@@ -132,14 +152,6 @@ export default function OnboardingIndex() {
   // ------------------------
 
   /* ------------ onboarding & popup state -------------------- */
-  const [step,       setStep]       = useState<number>(0);
-  const [queuedStep, setQueuedStep] = useState<number | null>(null);
-  const [popupVisible, setPopupVisible] = useState(true);
-  const [onboardingData, setOnboardingData] = useState<OnboardingData>({});
-  const [isStepValid, setStepValid] = useState<boolean>(true);
-  const [isNavigating, setIsNavigating] = useState<boolean>(false);
-
-  // --- Stabilize setData callback ---
   const stableSetData = useCallback(
       (updater: (prev: OnboardingData) => OnboardingData) => {
           setOnboardingData(updater);
@@ -147,8 +159,6 @@ export default function OnboardingIndex() {
       [setOnboardingData] // Dependency: the state setter function from useState
   );
   // ----------------------------------
-
-  // Remove TODO for Reanimated hook if not needed now
 
   const openPopup  = () => setPopupVisible(true);
   const closePopup = () => setPopupVisible(false);
@@ -160,43 +170,126 @@ export default function OnboardingIndex() {
   };
 
   const handleNext = () => {
+    const currentStep = step; // Capture current step at the start
+    const currentChoice = onboardingData.roadmapChoice;
+    console.log(`[OnboardingIndex] handleNext START. Current Step: ${currentStep}, Valid: ${isStepValid}, Choice: ${currentChoice}`);
+
     if (!isStepValid) {
+        console.log("[OnboardingIndex] handleNext: Step not valid. Bailing.");
         return;
     }
 
-    // Check if it's the final step (index is TOTAL_STEPS - 1)
-    if (step === TOTAL_STEPS - 1) {
-      console.log("[OnboardingIndex] Reached final step (14). Closing popup to trigger redirect.");
+    if (currentStep === TOTAL_STEPS - 1) {
+      console.log("[OnboardingIndex] handleNext: On final step (14). Queuing null, closing popup.");
       setQueuedStep(null);
       closePopup();
     } else {
-      // Otherwise, proceed to the next step as usual
-      let nextStep = step + 1;
-      setQueuedStep(nextStep);
-      closePopup();
+      // Calculate the *next* step number sequentially first
+      let targetStep = currentStep + 1;
+
+      // Check if we just completed step 9A (GoalList)
+      if (currentStep === 9 && currentChoice === 'Create') {
+          console.log("[OnboardingIndex] handleNext: On Step 9 (GoalList) with 'Create' choice. Adjusting targetStep to 10.");
+          targetStep = 10;
+      }
+
+      // *** IMPORTANT: No adjustment should happen when leaving step 8. targetStep should remain 9. ***
+
+      console.log(`[OnboardingIndex] handleNext: Intending to queue targetStep: ${targetStep}. Closing popup.`);
+      setQueuedStep(targetStep);
+      closePopup(); // Initiate close animation, which triggers handleClosed on finish
     }
   };
 
-  /* after collapse tween */
-  const handleClosed = () => {
-    if (queuedStep !== null) {
-      // Logic for transitioning between steps
-      const newStep = queuedStep;
-      setStep(newStep);
-      setQueuedStep(null);
-      setStepValid(newStep === 0); // Welcome (Step 0) is always valid
-      openPopup();
-    } else if (step === TOTAL_STEPS - 1) {
-      // This condition is now met after closing from Step 14
-      // because handleNext set queuedStep to null
-      console.log("[OnboardingIndex] Popup closed on final step (14), redirecting to dashboard.");
-      setIsNavigating(true);
-      router.replace('/(tabs)/dashboard' as any);
+  // --- Final Generation and Navigation Logic ---
+  const handleCompleteOnboarding = useCallback(async () => {
+    if (!userId) {
+        console.error("[OnboardingIndex] User ID missing, cannot complete onboarding.");
+        setGenerationError("Authentication error. Please try restarting the app.");
+        return;
     }
-    // Add an else case for safety, though it shouldn't be reached in normal flow
-    // else {
-    //   console.warn("[OnboardingIndex] handleClosed called unexpectedly with null queuedStep and not on final step.");
-    // }
+    if (isGenerating) return; // Prevent multiple triggers
+
+    console.log("[OnboardingIndex] Starting final onboarding generation...");
+    setIsGenerating(true);
+    setGenerationError(null);
+
+    try {
+        // 1. Log final data (no longer saving transiently)
+        await UserService.saveOnboardingData(userId, onboardingData);
+
+        // 2. Generate and Save Initial Stats
+        console.log("[OnboardingIndex] Generating initial stats...");
+        const { stats: initialStats, error: statsGenError } = await AIService.generateInitialStats(userId, onboardingData);
+        if (statsGenError || !initialStats) throw new Error(`Failed to generate initial stats: ${statsGenError?.message || 'No stats data'}`);
+        console.log("[OnboardingIndex] Saving initial stats...");
+        const { error: statsSaveError } = await StatService.setInitialBaseStats(userId, initialStats);
+        if (statsSaveError) throw new Error(`Failed to save initial stats: ${statsSaveError.message}`);
+
+        // 3. Generate and Save Initial Goals
+        console.log("[OnboardingIndex] Generating initial goals...");
+        const { goals: goalsWithoutIds, error: goalsGenError } = await AIService.generateInitialGoals(userId, onboardingData);
+        
+        // Enhanced check for generation errors or empty results
+        if (goalsGenError || !goalsWithoutIds || goalsWithoutIds.length === 0) {
+            const errorMessage = goalsGenError ? goalsGenError.message : 'AI returned no goals data';
+            console.error(`[OnboardingIndex] Failed to generate initial goals: ${errorMessage}`);
+            throw new Error(`Failed to generate initial goals: ${errorMessage}`);
+        }
+        console.log(`[OnboardingIndex] Successfully generated ${goalsWithoutIds.length} goals from AI (before saving):`, JSON.stringify(goalsWithoutIds, null, 2)); // Log generated goals
+        
+        console.log("[OnboardingIndex] Saving initial goals to DB...");
+        // Pass the validated goalsWithoutIds to the save function
+        const { data: goalsWithIds, error: goalsSaveError } = await RoadmapService.saveGoals(userId, goalsWithoutIds);
+        
+        // Enhanced check for saving errors or empty results
+        if (goalsSaveError || !goalsWithIds || goalsWithIds.length === 0) {
+            const errorMessage = goalsSaveError ? goalsSaveError.message : 'Saving goals returned no data or IDs';
+            console.error(`[OnboardingIndex] Failed to save initial goals: ${errorMessage}`);
+            throw new Error(`Failed to save initial goals: ${errorMessage}`);
+        }
+        console.log(`[OnboardingIndex] Successfully saved goals. Received ${goalsWithIds.length} goals with IDs:`, JSON.stringify(goalsWithIds, null, 2)); // Log saved goals with IDs
+
+        // 4. Generate and Save Initial Quests (using goals with IDs)
+        console.log("[OnboardingIndex] Generating initial quests using saved goals...");
+        const { quests: questsWithoutIds, error: questsGenError } = await AIService.generateInitialQuests(userId, goalsWithIds, onboardingData);
+        if (questsGenError || !questsWithoutIds) throw new Error(`Failed to generate initial quests: ${questsGenError?.message || 'No quests data'}`);
+        console.log("[OnboardingIndex] Saving initial quests...");
+        const { success: questsSaved, error: questsSaveError } = await QuestService.saveQuests(userId, questsWithoutIds as Quest[]); // Cast needed as saveQuests expects full Quest[] for now
+        if (questsSaveError || !questsSaved) throw new Error(`Failed to save initial quests: ${questsSaveError?.message || 'Save failed'}`);
+
+        // 5. Success - Navigate
+        console.log("[OnboardingIndex] Onboarding generation successful. Navigating to dashboard.");
+        setIsNavigating(true);
+        router.replace('/(tabs)/dashboard' as any);
+
+    } catch (error: any) {
+        console.error("[OnboardingIndex] Error during onboarding generation process:", error);
+        setGenerationError(error.message || "An unexpected error occurred during setup.");
+    } finally {
+        setIsGenerating(false);
+    }
+  }, [userId, onboardingData, router, isGenerating]); // Add dependencies
+
+  /* after collapse tween */
+  const handleClosed = async () => {
+    const stepToProcess = queuedStep; // Capture queued step at the start
+    const currentStepBeforeUpdate = step;
+    console.log(`[OnboardingIndex] handleClosed START. Queued: ${stepToProcess}, Current Before Update: ${currentStepBeforeUpdate}`);
+
+    if (stepToProcess !== null) {
+      console.log(`[OnboardingIndex] handleClosed: Setting step state to ${stepToProcess}`);
+      setStep(stepToProcess); // Update the main step state
+      setQueuedStep(null); // Clear the queue AFTER setting the new step
+      // Step validity is handled by the useEffect in each step component
+      console.log(`[OnboardingIndex] handleClosed: Opening popup for step ${stepToProcess}`);
+      openPopup(); // Re-open popup for the new step
+    } else if (currentStepBeforeUpdate === TOTAL_STEPS - 1 && !isNavigating && !isGenerating) {
+      console.log("[OnboardingIndex] handleClosed: On final step (14) with null queue. Triggering generation.");
+      await handleCompleteOnboarding();
+    } else {
+      console.log(`[OnboardingIndex] handleClosed: No action needed (null queue or not final step).`);
+    }
   };
 
   /* --------------- title helper (keep updated titles) ------- */
@@ -261,32 +354,33 @@ export default function OnboardingIndex() {
 
   /* --------------- step renderer ---------------------------- */
   const renderStep = () => {
-    const stepProps = {
+    // Base props passed to most steps
+    const baseStepProps = {
       data: onboardingData,
       setData: stableSetData,
       setValid: setStepValid,
     };
 
     switch (step) {
-      case 0:  return <Step01_Welcome {...stepProps} />; // Step 0 renders Welcome
-      case 1:  return <Step00_Username {...stepProps} />; // Step 1 renders Username
-      case 2:  return <Step02_Age {...stepProps} />;
-      case 3:  return <Step03_Gender {...stepProps} />;
-      case 4:  return <Step04_LifeStatus {...stepProps} />;
-      case 5:  return <Step05_Sleep {...stepProps} />;
-      case 6:  return <Step06_TimeCommit {...stepProps} />;
-      case 7:  return <Step07_FocusAreas {...stepProps} />;
-      case 8:  return <Step08_RoadmapChoice {...stepProps} />;
+      case 0:  return <Step01_Welcome {...baseStepProps} />; // Step 0 renders Welcome
+      case 1:  return <Step00_Username {...baseStepProps} />; // Step 1 renders Username
+      case 2:  return <Step02_Age {...baseStepProps} />;
+      case 3:  return <Step03_Gender {...baseStepProps} />;
+      case 4:  return <Step04_LifeStatus {...baseStepProps} />;
+      case 5:  return <Step05_Sleep {...baseStepProps} />;
+      case 6:  return <Step06_TimeCommit {...baseStepProps} />;
+      case 7:  return <Step07_FocusAreas {...baseStepProps} />;
+      case 8:  return <Step08_RoadmapChoice {...baseStepProps} />;
       case 9:
         if (onboardingData.roadmapChoice === 'Template') {
-          return <Step09_Template {...stepProps} />;
+          return <Step09_Template {...baseStepProps} />;
         }
-        return <Step09_GoalList {...stepProps} />;
-      case 10: return <Step10_SignIn {...stepProps} />;
-      case 11: return <Step11_FoundUs {...stepProps} />;
-      case 12: return <Step12_Rating {...stepProps} />;
-      case 13: return <Step13_Paywall {...stepProps} />;
-      case 14: return <Step14_Done {...stepProps} />;
+        return <Step09_GoalList {...baseStepProps} />;
+      case 10: return <Step10_SignIn {...baseStepProps} />;
+      case 11: return <Step11_FoundUs {...baseStepProps} />;
+      case 12: return <Step12_Rating {...baseStepProps} />;
+      case 13: return <Step13_Paywall {...baseStepProps} />;
+      case 14: return <Step14_Done {...baseStepProps} onComplete={() => setStepValid(true)} />;
       default: return null;
     }
   };
@@ -295,14 +389,13 @@ export default function OnboardingIndex() {
   if (!assetsReady) {
     return (
       <View style={[styles.bg, { justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color="#00ffff" />
+        <ActivityIndicator size="large" color="#cccccc" />
       </View>
     );
   }
 
-  // Show loading indicator while checking auth or navigating
-  if (isCheckingAuth || isNavigating) {
-     console.log(`[OnboardingIndex] Rendering loading indicator (isCheckingAuth: ${isCheckingAuth}, isNavigating: ${isNavigating}).`);
+  if (isCheckingAuth) {
+     console.log(`[OnboardingIndex] Rendering loading indicator (isCheckingAuth: true).`);
     return (
       <View style={[styles.bg, { justifyContent: 'center' }]}>
         <ActivityIndicator size="large" color="#00ffff" />
@@ -313,6 +406,17 @@ export default function OnboardingIndex() {
   if (isNavigating) {
     console.log("[OnboardingIndex] Navigating away, rendering null.");
     return null;
+  }
+
+  if (step === TOTAL_STEPS - 1 && (isGenerating || generationError)) {
+    return (
+      <View style={[styles.bg, { justifyContent: 'center' }]}>
+        {isGenerating && <ActivityIndicator size="large" color="#00ffff" />}
+        {isGenerating && <Text style={styles.loadingText}>Generating your profile...</Text>}
+        {generationError && <Text style={[styles.loadingText, { color: '#ff6b6b' }]}>{generationError}</Text>}
+        {generationError && <Button title="Retry" onPress={handleCompleteOnboarding} color="#00ffff" />} 
+      </View>
+    );
   }
 
   return (
@@ -328,16 +432,12 @@ export default function OnboardingIndex() {
           onClosed={handleClosed}
           disableBackdropClose={true}
           requiredHeight={requiredPopupHeight}
-          // Keep animation props for 8-bit style (fadeIn/Out)
-          // animationIn="fadeIn" 
-          // animationOut="fadeOut"
         >
-          {/* Remove TODO for ScrollView if not part of 8-bit style */}
           <TitleBar text={getTitle()} />
           {renderStep()}
           <NavRow
             isStepOne={step === 0}
-            isLast={false}
+            isLast={step === TOTAL_STEPS - 1}
             nextDisabled={!isStepValid}
             onBack={handleBack}
             onNext={handleNext}
@@ -356,5 +456,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#050a15',
     padding: moderateScale(20),
+  },
+  loadingText: {
+    marginTop: moderateScale(15),
+    color: '#ffffff',
+    fontSize: moderateScale(16),
+    // fontFamily: 'PressStart2P', // Optional font
   },
 });
