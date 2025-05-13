@@ -89,15 +89,19 @@ class AccountService {
     try {
       const { data, error } = await AuthService.client
         .from('users')
-        .select(`
-          id,
-          name,
-          level,
-          title_id,
-          completed_quests_count
-        `)
+        .select(
+          `
+            id,
+            name,
+            level,
+            title_id,
+            completed_quests_count
+          `
+        )
         .eq('id', userId)
         .single();
+
+      console.log(`[AccountService] getProfile query completed for user ${userId}. data:`, data, 'error:', error);
 
       if (error && error.code !== 'PGRST116') { // Allow PGRST116 (Not Found)
         console.error(`[AccountService] Error fetching profile for ${userId}:`, error);

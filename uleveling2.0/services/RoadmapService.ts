@@ -1,6 +1,9 @@
 import { Goal } from "@/mock/roadmapData";
 import AuthService from './AuthService'; // Import Supabase client access
 import { StatCategory } from "@/types/quest"; // Import StatCategory for casting
+import CacheService from './CacheService';
+
+const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 
 // Helper to map DB row to Goal interface
 function _mapDbRowToGoal(row: any): Goal {
@@ -25,6 +28,14 @@ class RoadmapService {
    * Fetches all goals for a specific user from the database.
    */
   static async getGoals(userId: string): Promise<{ data: Goal[] | null; error: Error | null }> {
+    // Attempt to return cached goals
+    console.log(`[RoadmapService] Attempting to get cached goals for user ${userId}...`);
+    const cached = await CacheService.get<Goal[]>(`goals_${userId}`);
+    if (cached) {
+      console.log(`[RoadmapService] Returning cached goals for user ${userId}.`);
+      return { data: cached, error: null };
+    }
+
     console.log(`[RoadmapService] Fetching goals for user ${userId} from DB...`);
     if (!userId) {
         return { data: [], error: new Error("User ID required to fetch goals.") };
@@ -43,7 +54,9 @@ class RoadmapService {
       }
 
       const goals = (data || []).map(_mapDbRowToGoal);
-      console.log(`[RoadmapService] Fetched ${goals.length} goals for user ${userId}.`);
+      console.log(`[RoadmapService] Caching ${goals.length} fetched goals for user ${userId}.`);
+      await CacheService.set(`goals_${userId}`, goals, CACHE_TTL);
+
       return { data: goals, error: null };
 
     } catch (e) {
@@ -62,6 +75,7 @@ class RoadmapService {
         return { data: null, error: new Error("User ID required to save goals.") };
      }
     if (!goals || goals.length === 0) {
+      console.log(`[RoadmapService] No goals to save for user ${userId}.`);
       return { data: [], error: null }; // Nothing to save, return empty array
     }
 
@@ -93,7 +107,9 @@ class RoadmapService {
       // Map the inserted data (including generated IDs and timestamps) back to Goal[]
       const savedGoalsWithIds = (insertedData || []).map(_mapDbRowToGoal);
 
-      console.log(`[RoadmapService] ${savedGoalsWithIds.length} goals saved successfully for user ${userId}. Returned data with IDs:`, JSON.stringify(savedGoalsWithIds, null, 2)); // Log returned data
+      console.log(`[RoadmapService] Caching ${savedGoalsWithIds.length} saved goals for user ${userId}.`);
+      await CacheService.set(`goals_${userId}`, savedGoalsWithIds, CACHE_TTL);
+
       return { data: savedGoalsWithIds, error: null }; // Return goals with IDs
     } catch (e) {
       console.error(`[RoadmapService] Error saving goals for user ${userId}:`, e);

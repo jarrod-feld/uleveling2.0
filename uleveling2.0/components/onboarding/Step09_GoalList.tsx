@@ -56,6 +56,11 @@ export default function Step09_GoalList({ data, setData, setValid }: StepProps) 
 
   // Update parent state whenever local goals change
   useEffect(() => {
+    console.log(`[Step09_GoalList] Goals changed, updating parent state with ${goals.length} goals`);
+    if (goals.length > 0) {
+      console.log(`[Step09_GoalList] Goals data:`, JSON.stringify(goals));
+    }
+    
     setData(prev => ({ ...prev, goals: goals.length > 0 ? goals : undefined }));
     setValid(goals.length > 0); // Valid if at least one goal exists
   }, [goals, setData, setValid]);
@@ -105,11 +110,13 @@ export default function Step09_GoalList({ data, setData, setValid }: StepProps) 
         const existingIndex = prevGoals.findIndex(g => g.id === newGoal.id);
         if (existingIndex >= 0) {
             // Update existing goal
+            console.log(`[Step09_GoalList] Updating existing goal: "${newGoal.description}" (${newGoal.timeframe})`);
             const updatedGoals = [...prevGoals];
             updatedGoals[existingIndex] = newGoal;
             return updatedGoals;
         } else {
             // Add new goal
+            console.log(`[Step09_GoalList] Adding new goal: "${newGoal.description}" (${newGoal.timeframe})`);
             return [...prevGoals, newGoal];
         }
     });

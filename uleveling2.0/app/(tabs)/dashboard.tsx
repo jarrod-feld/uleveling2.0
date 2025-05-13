@@ -51,7 +51,7 @@ export default function Dashboard(){
         .then(() => console.log("[Dashboard] Warning cache cleared."))
         .catch(err => console.error("[Dashboard] Failed to clear warning cache:", err));
       
-      router.replace("/(onboarding)/index" as any);
+      router.replace("/index" as any);
     }
   }, [user, isAuthLoading, router]);
 

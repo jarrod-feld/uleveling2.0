@@ -8,6 +8,8 @@ import AccountService from "./AccountService"; // Needed?
 import AuthService from './AuthService'; // Import Supabase client access
 import { PostgrestError } from '@supabase/supabase-js';
 import { Goal } from "@/mock/roadmapData"; // Keep for AI context
+import CacheService from './CacheService';
+const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
 
 // Helper to map DB row to Quest interface
 function _mapDbRowToQuest(row: any): Quest {
@@ -57,6 +59,12 @@ class QuestService {
    * If no quests exist for today, triggers generation of new daily quests.
    */
   static async getQuests(userId: string): Promise<{ data: Quest[] | null; error: Error | null }> {
+    console.log(`[QuestService] Attempting to get cached quests for user ${userId}...`);
+    const cached = await CacheService.get<Quest[]>(`quests_${userId}`);
+    if (cached) {
+      console.log(`[QuestService] Returning cached quests for user ${userId}.`);
+      return { data: cached, error: null };
+    }
     console.log(`[QuestService] Fetching today's quests for user ${userId} from DB...`);
     const todayStart = startOfDay(new Date()).toISOString();
     const todayEnd = endOfDay(new Date()).toISOString();
@@ -87,7 +95,8 @@ class QuestService {
 
       // 3. Map DB rows to Quest interface
       const quests = todaysQuestsData.map(_mapDbRowToQuest);
-      console.log(`[QuestService] Fetched ${quests.length} quests for user ${userId} for today.`);
+      console.log(`[QuestService] Caching ${quests.length} fetched quests for user ${userId}.`);
+      await CacheService.set(`quests_${userId}`, quests, CACHE_TTL);
       return { data: quests, error: null };
 
     } catch (e) {
@@ -162,6 +171,8 @@ class QuestService {
             throw new Error(error.message);
         }
         console.log(`[QuestService] ${dbRows.length} initial quests saved successfully for user ${userId}.`);
+        console.log(`[QuestService] Caching ${quests.length} saved quests for user ${userId}.`);
+        await CacheService.set(`quests_${userId}`, quests, CACHE_TTL);
         return { success: true, error: null };
      } catch (e) {
         console.error(`[QuestService] Error saving initial quests for user ${userId}:`, e);

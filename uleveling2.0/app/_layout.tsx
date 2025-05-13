@@ -15,7 +15,7 @@ SplashScreen.preventAutoHideAsync();
 // Inner layout component
 function InnerLayout() {
     return (
-        <QuestGoalProvider>
+        <QuestGoalProvider isAppReady={true}>
             <Stack
                 screenOptions={{
                     headerShown: false,
@@ -53,7 +53,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <NotificationProvider>
-          <UserProvider>
+          <UserProvider isAppReady={true}>
             <InnerLayout />
           </UserProvider>
         </NotificationProvider>

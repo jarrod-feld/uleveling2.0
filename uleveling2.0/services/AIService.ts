@@ -104,7 +104,8 @@ function parseGoalResponse(responseText: string): Omit<Goal, 'id'>[] {
 }
 
 // Parses the response expected from generateInitialQuests and generateDailyQuests
-function parseQuestResponse(responseText: string, contextGoals?: Goal[]): Omit<Quest, 'id' | 'completedAt' | 'status'>[] {
+// Returns quest objects matching mock/dashboardData.ts (minus `id`)
+function parseQuestResponse(responseText: string, contextGoals?: Goal[]): Omit<Quest, 'id'>[] {
   console.log("[AIService] Parsing quest response. Raw:", responseText);
   try {
      const parsedJson = JSON.parse(responseText);
@@ -122,31 +123,36 @@ function parseQuestResponse(responseText: string, contextGoals?: Goal[]): Omit<Q
          // Ensure stats is an array of 1 or 2 valid StatCategories (excluding DIS)
          const rawStats = Array.isArray(q?.stats) ? q.stats : [];
          const validStats = rawStats
-             .filter((s: any): s is StatCategory => typeof s === 'string' && s !== 'DIS' && s !== 'ALL') // Use type predicate, filter out DIS/ALL
-             .slice(0, 2); // Take at most 2
-
-         // Check length BEFORE casting to tuple type
+             .filter((s: any): s is StatCategory => typeof s === 'string' && s !== 'DIS' && s !== 'ALL')
+             .slice(0, 2);
          if (validStats.length === 0) {
              console.warn(`[AIService] No valid primary stat found in AI quest response for title: "${title}". Skipping quest.`);
-             return null; // Quest needs at least one stat
+             return null;
          }
-
-         // Cast the result AFTER filtering, slicing, AND length check
          const finalStats = validStats as [StatCategory, StatCategory?];
 
+         // Stat increments (explicit non-DIS)
          const rawIncrements = Array.isArray(q?.statIncrements) ? q.statIncrements : [];
          const validIncrements = rawIncrements.filter((inc: any) =>
              typeof inc === 'object' && inc !== null &&
              typeof inc.category === 'string' && inc.category !== 'DIS' && inc.category !== 'ALL' &&
              typeof inc.amount === 'number'
-         );
+         ) as { category: StatCategory; amount: number }[];
 
+         // Discipline increment amount
          const disciplineIncrementAmount = (typeof q?.disciplineIncrementAmount === 'number' && Number.isInteger(q.disciplineIncrementAmount))
              ? q.disciplineIncrementAmount
              : 1;
 
+         // Status: default to 'active'
+         const rawStatus = typeof q?.status === 'string' ? q.status : 'active';
+         const status = (['active', 'completed', 'skipped'].includes(rawStatus) ? rawStatus : 'active') as 'active' | 'completed' | 'skipped';
+
+         // completedAt timestamp if provided
+         const completedAt = q?.completedAt ? new Date(q.completedAt) : undefined;
+
          if (!goalId || (validGoalIds.size > 0 && !validGoalIds.has(goalId))) {
-             console.warn(`[AIService] Invalid or missing goalId ('${goalId}') found in AI quest response for title: "${title}". It does not match any provided context goal ID. Skipping quest.`);
+             console.warn(`[AIService] Invalid or missing goalId ('${goalId}') found in AI quest response for title: "${title}". Skipping quest.`);
              return null;
          }
 
@@ -154,14 +160,16 @@ function parseQuestResponse(responseText: string, contextGoals?: Goal[]): Omit<Q
              title,
              description,
              goalId,
-             stats: finalStats, // Use validated stats
+             stats: finalStats,
+             status,
              progress,
-             statIncrements: validIncrements, // Use validated increments
+             statIncrements: validIncrements,
              disciplineIncrementAmount,
-         } as Omit<Quest, 'id' | 'completedAt' | 'status'>;
-     }).filter((q: any): q is Omit<Quest, 'id' | 'completedAt' | 'status'> => q !== null);
+             completedAt
+         } as Omit<Quest, 'id'>;
+     }).filter((q: Omit<Quest, 'id'> | null): q is Omit<Quest, 'id'> => q !== null);
 
-     console.log(`[AIService] Parsed ${quests.length} valid quests (without IDs) after validation.`);
+     console.log(`[AIService] Parsed ${quests.length} valid quests (minus IDs) after validation.`);
      return quests;
 
   } catch (e) {
@@ -356,19 +364,21 @@ class AIService {
   ): Promise<{ stats: StatBaseValues | null; error: Error | null }> {
     console.log(`[AIService] Generating initial stats for user: ${userId}`);
     try {
-      // Fetch persistent profile data from DB (might not be strictly needed for stats, but good practice)
+      console.log('[AIService] About to fetch DB profile for stats generation...');
       const { data: dbProfile, error: profileError } = await AccountService.getProfile(userId);
+      console.log('[AIService] AccountService.getProfile returned for stats:', { dbProfile, profileError });
       if (profileError) {
         console.warn(`[AIService] Failed to fetch DB profile for ${userId} during stat gen, proceeding with onboarding data only. Error:`, profileError.message);
       }
 
+      console.log('[AIService] Fetching AI config for initialStatGeneration...');
       const config = await AIConfigService.getAIConfig('initialStatGeneration');
+      console.log('[AIService] Received AI config for stats:', { modelName: config.modelName, maxTokens: config.maxTokens, temperature: config.temperature });
       // Create a simple prompt structure using onboardingData directly for stats
-      // The prompt itself expects the raw answers
       const systemPrompt = config.basePrompt + '\n\nUser Onboarding Answers:\n' + JSON.stringify(onboardingData, null, 2);
+      console.log('[AIService] Constructed systemPrompt for stats:', systemPrompt);
 
       const client = this.getClient(config.apiKey);
-
       console.log('[AIService] Sending prompt to OpenAI for initial stats...');
       const completion = await client.chat.completions.create({
         messages: [
@@ -381,7 +391,9 @@ class AIService {
         response_format: { type: "json_object" },
       });
 
+      console.log('[AIService] OpenAI chat.completions.call returned for stats.');
       const responseText = completion.choices[0]?.message?.content;
+      console.log('[AIService] AI responseText for stats:', responseText);
       if (!responseText) {
         throw new Error('OpenAI API returned empty content for initial stats.');
       }
@@ -389,6 +401,7 @@ class AIService {
 
       // Parse Stat Response
       const stats = parseStatResponse(responseText);
+      console.log('[AIService] Parsed stats:', stats);
       if (!stats) {
          throw new Error('Failed to parse valid stats from AI response.');
       }

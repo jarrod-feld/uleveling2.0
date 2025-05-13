@@ -6,12 +6,13 @@ interface Props {
   isStepOne: boolean;
   isLast   : boolean;
   nextDisabled?: boolean;
+  backDisabled?: boolean;
   onBack: () => void;
   onNext: () => void;
 }
 
 export default function NavRow({
-  isStepOne, isLast, nextDisabled = false, onBack, onNext,
+  isStepOne, isLast, nextDisabled = false, backDisabled = false, onBack, onNext,
 }: Props) {
   return (
     <View style={styles.row}>
@@ -19,6 +20,7 @@ export default function NavRow({
         label={isStepOne ? '[No]' : '[Back]'}
         colour="#ffffff"
         onPress={onBack}
+        disabled={backDisabled}
       />
       {!isLast && (
         <NavButton
@@ -66,7 +68,8 @@ const styles = StyleSheet.create({
   btn: {
     paddingVertical: verticalScale(10),
     paddingHorizontal: scale(20),
-    borderWidth: 2,
+    borderWidth: scale(2),
+    borderRadius: moderateScale(5),
   },
   txt: {
     fontSize: moderateScale(12, 0.4),

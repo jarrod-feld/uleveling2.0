@@ -97,6 +97,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0d1b2a', // Dark blue background
     borderWidth: moderateScale(4), // Thicker border
     borderColor: '#00ffff', // Bright cyan border
+    borderRadius: moderateScale(12),
   },
   inner : {
     paddingHorizontal: moderateScale(12),

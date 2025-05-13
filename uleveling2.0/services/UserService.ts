@@ -1,5 +1,6 @@
 import CacheService from './CacheService';
 import { isToday, startOfDay } from 'date-fns';
+import AccountService from './AccountService';
 // import { OnboardingData } from '@/app/onboarding'; // Keep if saveOnboardingData needs it
 
 const WARNING_DISMISSED_CACHE_KEY = 'warningDismissedDate';
@@ -51,10 +52,19 @@ class UserService {
    */
   static async saveOnboardingData(userId: string, data: any): Promise<{ success: boolean, error: Error | null }> {
     console.log(`[UserService] Received final onboarding data for user ${userId} (logging only):`, JSON.stringify(data, null, 2));
-    // Simulate success as we are not saving persistently here
-    // If specific fields (e.g., name) should be saved, call AccountService.updateProfile here.
-    // const { error } = await AccountService.updateProfile(userId, { name: data.name });
-    // if (error) return { success: false, error };
+    // Persist the user's name to their profile if provided (fire-and-forget)
+    if (data.name) {
+      console.log(`[UserService] Updating user profile name to: ${data.name} (async)...`);
+      AccountService.updateProfile(userId, { name: data.name })
+        .then(({ error }) => {
+          if (error) {
+            console.error(`[UserService] (Async) Failed to update profile name for user ${userId}:`, error.message);
+          } else {
+            console.log(`[UserService] (Async) Profile update initiated successfully for user ${userId}.`);
+          }
+        });
+    }
+    // Return success immediately, don't wait for the profile update to complete
     return { success: true, error: null };
   }
 

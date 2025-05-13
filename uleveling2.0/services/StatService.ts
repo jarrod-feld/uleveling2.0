@@ -1,21 +1,28 @@
-import { Stat, StatCategory, statCategories, mockStats } from "@/mock/statsData";
+import { Stat, mockStats } from "@/mock/statsData";
+import { StatCategory } from "@/types/quest";
 import AuthService from './AuthService'; // Import Supabase client access
 import { StatBaseValues } from '@/types/ai'; // Import the new type
+import CacheService from './CacheService';
+
+const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 
 // Define the structure for user stats object returned by getStats
 export interface UserStats {
     [label: string]: Stat; // Maps StatCategory label (e.g., 'STR') to Stat object
 }
 
-// Define the default structure for a single stat if not found in DB
-const defaultStat = (label: StatCategory): Stat => ({
-    id: label, // Use label as ID for simplicity in the object structure
-    label: label,
-    name: mockStats.find(s => s.label === label)?.name || label, // Get full name from mock data or use label
-    baseValue: 5,  // Default base value from DB schema
-    bonusValue: 0, // Default bonus value from DB schema
-    totalValue: 5   // Calculated default total
-});
+// Define the default structure for a single stat when not found in DB
+const defaultStat = (label: StatCategory): Stat => {
+    const mock = mockStats.find(s => s.label === label);
+    return {
+        id: label,
+        label: label,
+        baseValue: 5,
+        bonus: 0,
+        totalValue: 5,
+        iconName: mock?.iconName ?? 'Barbell'
+    };
+};
 
 class StatService {
 
@@ -27,6 +34,13 @@ class StatService {
    * Initializes missing stats with defaults.
    */
   static async getStats(userId: string): Promise<{ data: UserStats | null; error: Error | null }> {
+    console.log(`[StatService] Attempting to get cached stats for user ${userId}...`);
+    const cached = await CacheService.get<UserStats>(`stats_${userId}`);
+    if (cached) {
+      console.log(`[StatService] Returning cached stats for user ${userId}.`);
+      return { data: cached, error: null };
+    }
+
     console.log(`[StatService] Fetching stats for user ${userId} from DB...`);
     if (!userId) {
         return { data: null, error: new Error("User ID required to fetch stats.") };
@@ -47,17 +61,12 @@ class StatService {
         throw new Error(error.message);
       }
 
-      // Initialize with defaults
+      // Initialize with defaults from mockStats
       const userStats: UserStats = {};
-      if (Array.isArray(statCategories)) {
-          statCategories.forEach(label => {
-              userStats[label] = defaultStat(label);
-          });
-      } else {
-          console.error("[StatService] Critical Error: statCategories imported from mock/statsData is not an array!");
-          // Handle this critical error, perhaps return an error or default structure
-          return { data: null, error: new Error("Internal configuration error: statCategories invalid.") };
-      }
+      mockStats.forEach(m => {
+          const label = m.label as StatCategory;
+          userStats[label] = defaultStat(label);
+      });
 
       // Check if dbStats is an array and process it
       if (Array.isArray(dbStats)) {
@@ -68,7 +77,7 @@ class StatService {
                   userStats[label] = {
                       ...userStats[label],
                       baseValue: row.base_value,
-                      bonusValue: row.bonus_value,
+                      bonus: row.bonus_value,
                       totalValue: row.base_value + row.bonus_value
                   };
                   foundLabels.add(label);
@@ -82,7 +91,9 @@ class StatService {
            console.warn(`[StatService] Expected dbStats to be an array or null, but received: ${typeof dbStats}`, dbStats);
       }
 
-      console.log(`[StatService] Final mapped stats for user ${userId}: ${Object.keys(userStats).length}`);
+      console.log(`[StatService] Caching stats for user ${userId}.`);
+      await CacheService.set(`stats_${userId}`, userStats, CACHE_TTL);
+
       return { data: userStats, error: null };
 
     } catch (e) {
@@ -114,16 +125,35 @@ class StatService {
             bonus_value: 0, // Initialize bonus to 0
         }));
 
+        console.log(`[StatService] Preparing to upsert stats data for user ${userId}:`, JSON.stringify(upsertData, null, 2));
+
         const { error } = await this.supabase
             .from('user_stats')
             .upsert(upsertData, { onConflict: 'user_id,stat_label' });
+
+        console.log(`[StatService] Upsert completed for user ${userId}. Supabase error:`, JSON.stringify(error, null, 2));
 
         if (error) {
             console.error(`[StatService] DB error setting initial stats for user ${userId}:`, error);
             throw new Error(error.message);
         }
 
-        console.log(`[StatService] Initial base stats set successfully for user ${userId}.`);
+        console.log(`[StatService] Caching initial stats in UserStats format for user ${userId}.`);
+        const userStatsToCache: UserStats = {};
+        Object.entries(baseStats).forEach(([label, baseValue]) => {
+            const statLabel = label as StatCategory;
+            const defaultInfo = defaultStat(statLabel); // Use your existing defaultStat helper
+            userStatsToCache[statLabel] = {
+                id: statLabel,
+                label: statLabel,
+                baseValue: baseValue,
+                bonus: 0, // Bonus is 0 initially
+                totalValue: baseValue, // Total = base + 0
+                iconName: defaultInfo.iconName, // Get icon from defaultStat helper
+            };
+        });
+        await CacheService.set(`stats_${userId}`, userStatsToCache, CACHE_TTL); // Cache the correctly formatted UserStats
+
         return { error: null };
 
     } catch (e) {
@@ -168,11 +198,9 @@ class StatService {
    * Increments the bonus for the Discipline stat.
    */
   static async incrementDisciplineBonus(userId: string, amount: number): Promise<{ error: Error | null }> {
-    // Delegate to the general function
     return this.incrementStatBonus(userId, 'DIS', amount);
   }
 
-  // Removed cache methods and mock data usage
-}
+} // end of StatService class
 
-export default StatService; 
+export default StatService;
