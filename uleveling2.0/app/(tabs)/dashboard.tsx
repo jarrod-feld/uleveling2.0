@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { View, StyleSheet, Pressable, Text, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, ImageBackground, StyleSheet, Pressable, Text, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import Animated, { FadeIn, Layout, FadeOut } from 'react-native-reanimated';
 import { CaretDown, CaretUp } from 'phosphor-react-native';
 import DailyHeader from '@/components/dashboard/DailyHeader';
@@ -14,11 +14,8 @@ import CacheService from '@/services/CacheService';
 const FONT = { fontFamily: 'PressStart2P' };
 
 export default function Dashboard(){
-  console.log('>>> Dashboard Component Mounted/Rendered <<<');
-
   const { user, isLoading: isAuthLoading } = useAuth();
   
-
   const {
     quests = [],
     completeQuest,
@@ -33,7 +30,6 @@ export default function Dashboard(){
 
   const [showCompleted, setShowCompleted] = useState(false);
   const [showSkipped, setShowSkipped] = useState(false);
-  const [isScrollDisabled, setIsScrollDisabled] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const activeQuests = useMemo(() => quests.filter(q => q.status === 'active'), [quests]);
@@ -44,7 +40,6 @@ export default function Dashboard(){
   const skippedCount = skippedQuests.length;
 
   useEffect(() => {
-    console.log(`[Dashboard] Auth Check Effect Running - isLoading: ${isAuthLoading}, User: ${user?.id ?? 'null'}`);
     if (!isAuthLoading && !user) {
       console.log("[Dashboard] User not authenticated. Clearing warning cache and redirecting to onboarding...");
       CacheService.remove('warningDismissedDate')
@@ -74,19 +69,11 @@ export default function Dashboard(){
   }, [undoQuestStatus, completedQuests, skippedQuests]);
 
   const handleCompleteQuest = useCallback((id: string) => {
-    setIsScrollDisabled(true);
     completeQuest(id);
-    setTimeout(() => {
-      setIsScrollDisabled(false);
-    }, 500);
   }, [completeQuest]);
 
   const handleSkipQuest = useCallback((id: string) => {
-    setIsScrollDisabled(true);
     skipQuest(id);
-    setTimeout(() => {
-      setIsScrollDisabled(false);
-    }, 500);
   }, [skipQuest]);
 
   const onRefresh = useCallback(async () => {
@@ -94,7 +81,6 @@ export default function Dashboard(){
     setIsRefreshing(true);
     try {
       await refreshQuestGoalData();
-      console.log("[Dashboard] Refresh completed via context.");
     } catch (error) {
       console.error("[Dashboard] Error during context refresh:", error);
     } finally {
@@ -103,7 +89,6 @@ export default function Dashboard(){
   }, [refreshQuestGoalData]);
 
   if (isAuthLoading || (!user && !isAuthLoading)) {
-    console.log("[Dashboard] Rendering Auth Loading/Redirect Indicator...");
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color="#00ffff" />
@@ -112,7 +97,6 @@ export default function Dashboard(){
   }
 
   if (isQuestLoading) {
-    console.log("[Dashboard] Rendering Quest Loading Indicator...");
     return (
       <View style={[styles.container, styles.centered]}> 
         <DailyHeader/> 
@@ -122,14 +106,12 @@ export default function Dashboard(){
     );
   }
 
-  console.log("[Dashboard] Rendering main content...");
   return(
-    <View style={styles.container}>
+    <ImageBackground source={require('@/assets/images/dashboard-bg.png')} style={styles.background}>
       <DailyHeader/>
       <ScrollView 
-        style={styles.scrollView} 
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContentContainer} 
-        scrollEnabled={!isScrollDisabled}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -200,13 +182,23 @@ export default function Dashboard(){
           );
         })}
       </ScrollView>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#001a22',
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  background: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   centered: {
     flex: 1,
@@ -222,13 +214,15 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    width: '100%',
   },
   scrollContentContainer: {
      paddingBottom: vs(20),
   },
   questWrapper: {
     paddingHorizontal: s(20),
-    width: '100%',
+    width: "100%",
+    alignSelf: 'center',
   },
   dropdownButton: {
     flexDirection: 'row',
@@ -238,11 +232,11 @@ const styles = StyleSheet.create({
     marginTop: vs(10),
     marginHorizontal: s(20),
     borderTopWidth: 1, 
-    borderTopColor: '#ffffff20',
+    borderTopColor: '#00ffff20',
   },
   dropdownText: {
     ...FONT,
-    color: '#fff',
+    color: '#00ffff',
     fontSize: s(12),
     marginRight: s(8),
   }

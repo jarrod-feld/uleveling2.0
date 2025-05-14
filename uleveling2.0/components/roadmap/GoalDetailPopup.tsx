@@ -3,11 +3,11 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { X } from 'phosphor-react-native';
 import SoloPopup from '@/components/common/SoloPopup';
 import { Goal } from '@/mock/roadmapData';
-import { useAuth, QuestWithGoalTitle } from '@/contexts/UserContext';
+import { useQuestGoals, QuestWithGoalTitle } from '@/contexts/QuestGoalContext';
 import { verticalScale as vS, scale as s } from '@/constants/scaling';
 
 // Define a fixed height for the popup
-const POPUP_HEIGHT = vS(200); // Adjust this value as needed
+const POPUP_HEIGHT = vS(450); // Adjust this value as needed
 
 interface GoalDetailPopupProps {
   visible: boolean;
@@ -27,10 +27,10 @@ function QuestItem({ quest }: { quest: QuestWithGoalTitle }) {
 }
 
 export default function GoalDetailPopup({ visible, onClose, onClosed, goal }: GoalDetailPopupProps) {
-  const { quests } = useAuth();
+  const { quests } = useQuestGoals();
 
   const relatedQuests = useMemo(() => {
-    if (!goal) return [];
+    if (!goal || !quests) return [];
     return quests.filter(q => q.goalId === goal.id && q.status !== 'completed' && q.status !== 'skipped');
   }, [quests, goal]);
 
@@ -46,6 +46,8 @@ export default function GoalDetailPopup({ visible, onClose, onClosed, goal }: Go
       <View style={styles.contentWrapper}>
         {/* Top Section (non-scrollable) */}
         <Text style={styles.goalTitle}>{goal.title}</Text>
+        <Text style={styles.goalDescription}>{goal.description}</Text>
+        <View style={styles.separator} />
         <Text style={styles.sectionTitle}>Active Quests:</Text>
 
         {/* Scrollable Quest List Area */}
@@ -81,9 +83,25 @@ const styles = StyleSheet.create({
     fontFamily: 'PressStart2P',
     fontSize: s(12),
     color: '#fff',
-    marginBottom: vS(15),
+    marginBottom: vS(10), // Reduced margin a bit
     textAlign: 'center',
     paddingHorizontal: s(15),
+  },
+  goalDescription: {
+    fontFamily: 'PressStart2P',
+    fontSize: s(9),
+    color: '#ccc',
+    marginBottom: vS(12),
+    textAlign: 'center',
+    paddingHorizontal: s(20),
+    lineHeight: vS(14),
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#00ffff40',
+    width: '80%',
+    alignSelf: 'center',
+    marginVertical: vS(12),
   },
   sectionTitle: {
     fontFamily: 'PressStart2P',

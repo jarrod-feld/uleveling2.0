@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-// Keep Animated import for now, but comment out usage
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -14,7 +13,9 @@ import { useNotificationContext } from '@/contexts/NotificationContext';
 
 const FONT_FAMILY = 'PressStart2P';
 const POPUP_DURATION = 5000; // How long the popup stays visible
-const ANIMATION_DURATION = 300; // Duration of slide/fade animation
+const ANIMATION_DURATION = 150; // Duration of slide/fade animation - Made faster
+const INITIAL_TRANSLATE_Y = vs(-10); // Initial off-screen position (above) - Adjusted for shorter travel
+const POPUP_TOP_OFFSET = vs(10); // Pre-calculated vertical offset for the top style
 
 // Define notification types
 export type NotificationType = 'stat' | 'quest' | 'achievement'; // Add achievement
@@ -36,90 +37,72 @@ interface NotificationPopupProps {
 }
 
 // Create a unique ID generator (simple example)
-let notificationIdCounter = 0;
-const generateNotificationId = () => `notif-${notificationIdCounter++}`;
+// let notificationIdCounter = 0; // This will be managed by NotificationService
+// const generateNotificationId = () => `notif-${notificationIdCounter++}`;
 
 // Rename component BACK to StatIncreasePopup
 export default function StatIncreasePopup({ }: NotificationPopupProps) {
   const { notifications, clearNotifications } = useNotificationContext();
 
   const insets = useSafeAreaInsets();
-  // Comment out animation shared values
-  // const translateY = useSharedValue(-100); 
-  // const opacity = useSharedValue(0);
-  const [isVisible, setIsVisible] = useState(false);
+  const translateY = useSharedValue(INITIAL_TRANSLATE_Y); 
+  const opacity = useSharedValue(0);
+  const [isVisible, setIsVisible] = useState(false); // Tracks if the component should render and manage timers
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Comment out animated style generation
-  /*
   const animatedStyle = useAnimatedStyle(() => {
     return {
       transform: [{ translateY: translateY.value }],
       opacity: opacity.value,
-      top: insets.top + vs(10),
+      top: insets.top + POPUP_TOP_OFFSET, // Use pre-calculated offset
     };
   });
-  */
-  // Use a simple static style for now
-  const staticStyle = {
-      top: insets.top + vs(10),
-      opacity: isVisible ? 1 : 0, // Control opacity with state
-  };
 
   const hidePopup = useCallback(() => {
-    // Comment out animation calls
-    // translateY.value = withTiming(-100, { duration: ANIMATION_DURATION, easing: Easing.inOut(Easing.ease) });
-    // opacity.value = withTiming(0, { duration: ANIMATION_DURATION }, (finished) => {
-    //   if (finished) { ... }
-    // });
-    // Directly set state and clear notifications
-    setIsVisible(false);
-    clearNotifications();
-  // Comment out animation values from dependencies
-  }, [clearNotifications]); 
+    // Animate out
+    translateY.value = withTiming(INITIAL_TRANSLATE_Y, { duration: ANIMATION_DURATION, easing: Easing.in(Easing.ease) });
+    opacity.value = withTiming(0, { duration: ANIMATION_DURATION }, (finished) => {
+      if (finished) {
+        runOnJS(setIsVisible)(false); 
+        runOnJS(clearNotifications)(); 
+      }
+    });
+  }, [clearNotifications, translateY, opacity]); 
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout | null = null;
-
-    // Clear any existing timeout before evaluating conditions
     if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
 
-    if (notifications.length > 0 && !isVisible) {
-      setIsVisible(true);
-      // No animation calls for now
-      timeoutId = setTimeout(hidePopup, POPUP_DURATION);
-      timeoutRef.current = timeoutId; 
-
-    } else if (notifications.length > 0 && isVisible) {
-       // Already visible, just reset the timer
-      timeoutId = setTimeout(hidePopup, POPUP_DURATION);
-       timeoutRef.current = timeoutId;
-
-    } else if (notifications.length === 0 && isVisible) {
-      // Notifications cleared while visible, hide immediately
-      // Existing timeout was already cleared above
-      runOnJS(hidePopup)(); // Ensure hidePopup runs on JS thread if needed
-    } else {
+    if (notifications.length > 0) {
+      if (!isVisible) {
+        runOnJS(setIsVisible)(true); 
+        translateY.value = withTiming(0, { duration: ANIMATION_DURATION, easing: Easing.out(Easing.ease) });
+        opacity.value = withTiming(1, { duration: ANIMATION_DURATION });
+      } 
+      timeoutRef.current = setTimeout(() => {
+        runOnJS(hidePopup)();
+      }, POPUP_DURATION);
+    } else { 
+      if (isVisible) {
+        runOnJS(hidePopup)(); 
+      } 
     }
 
-    // Cleanup function
     return () => {
-      if (timeoutId) {
-          clearTimeout(timeoutId);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
     };
-  }, [notifications, isVisible, hidePopup]); // Dependencies remain the same for now
+  }, [notifications, isVisible, hidePopup, translateY, opacity]); 
 
-  if (!isVisible || notifications.length === 0) {
+  if (!isVisible) {
     return null;
   }
 
-  // Use regular View and static style for now
   return (
-    <View style={[styles.container, staticStyle]}>
+    <Animated.View style={[styles.container, animatedStyle]}>
       {notifications.map((notif) => (
         <View key={notif.id} style={styles.notificationRow}>
           {/* Conditional Rendering based on type */} 
@@ -141,7 +124,7 @@ export default function StatIncreasePopup({ }: NotificationPopupProps) {
           )}
         </View>
       ))}
-    </View>
+    </Animated.View>
   );
 }
 

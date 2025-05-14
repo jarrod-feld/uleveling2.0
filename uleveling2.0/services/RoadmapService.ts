@@ -29,15 +29,16 @@ class RoadmapService {
    */
   static async getGoals(userId: string): Promise<{ data: Goal[] | null; error: Error | null }> {
     // Attempt to return cached goals
-    console.log(`[RoadmapService] Attempting to get cached goals for user ${userId}...`);
+    console.log(`[RoadmapService] getGoals called for user ${userId}. Attempting to get cached goals...`);
     const cached = await CacheService.get<Goal[]>(`goals_${userId}`);
     if (cached) {
-      console.log(`[RoadmapService] Returning cached goals for user ${userId}.`);
+      console.log(`[RoadmapService] Returning ${cached.length} cached goals for user ${userId}.`);
       return { data: cached, error: null };
     }
 
-    console.log(`[RoadmapService] Fetching goals for user ${userId} from DB...`);
+    console.log(`[RoadmapService] No cached goals found for user ${userId}. Fetching from DB...`);
     if (!userId) {
+        console.warn("[RoadmapService] User ID is null/undefined. Returning empty goals and error.");
         return { data: [], error: new Error("User ID required to fetch goals.") };
     }
     try {
@@ -48,19 +49,27 @@ class RoadmapService {
         .eq('user_id', userId)
         .order('created_at', { ascending: true });
 
+      console.log(`[RoadmapService] DB response for user ${userId}:`, { data, error });
+
       if (error) {
         console.error(`[RoadmapService] DB error fetching goals for user ${userId}:`, error);
         throw new Error(error.message);
       }
 
       const goals = (data || []).map(_mapDbRowToGoal);
-      console.log(`[RoadmapService] Caching ${goals.length} fetched goals for user ${userId}.`);
-      await CacheService.set(`goals_${userId}`, goals, CACHE_TTL);
+      console.log(`[RoadmapService] Mapped DB data to ${goals.length} goals for user ${userId}.`);
+      
+      if (goals.length > 0) {
+        console.log(`[RoadmapService] Caching ${goals.length} fetched goals for user ${userId}.`);
+        await CacheService.set(`goals_${userId}`, goals, CACHE_TTL);
+      } else {
+        console.log(`[RoadmapService] No goals from DB to cache for user ${userId}.`);
+      }
 
       return { data: goals, error: null };
 
     } catch (e) {
-      console.error(`[RoadmapService] Error fetching goals for user ${userId}:`, e);
+      console.error(`[RoadmapService] Catch block error fetching goals for user ${userId}:`, e);
       return { data: null, error: e instanceof Error ? e : new Error("Failed to fetch goals") };
     }
   }

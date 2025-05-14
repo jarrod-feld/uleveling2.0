@@ -28,7 +28,7 @@ interface QuestDetailPopupProps {
 }
 
 // Adjust height for new controls
-const POPUP_HEIGHT = vs(450); 
+const POPUP_HEIGHT = vs(500); 
 
 export default function QuestDetailPopup({ 
   quest, 

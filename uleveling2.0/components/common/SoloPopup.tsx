@@ -95,9 +95,9 @@ const styles = StyleSheet.create({
     width: '100%',
     overflow: 'hidden',
     backgroundColor: '#0d1b2a', // Dark blue background
-    borderWidth: moderateScale(4), // Thicker border
+    borderWidth: moderateScale(2), // Thicker border
     borderColor: '#00ffff', // Bright cyan border
-    borderRadius: moderateScale(12),
+    borderRadius: moderateScale(6),
   },
   inner : {
     paddingHorizontal: moderateScale(12),

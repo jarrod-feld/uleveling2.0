@@ -80,17 +80,22 @@ export default function TimerBar(/*{ time }: Props*/) {
   );
 }
 
-const FONT = { fontFamily: 'PressStart2P' };
+const FONT = { fontFamily: 'TrajanPro-Regular' };
 const styles = StyleSheet.create({
-  row : { flexDirection:'row', alignItems:'center', justifyContent:'center', marginTop: vs(17) },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: vs(17),
+  },
   time: {
     ...FONT,
-    fontSize:s(14),
-    color:'#fff',
-    marginLeft:s(10),
-    minWidth: s(70),
+    fontSize: s(16),
+    color: '#00ffff',
+    marginLeft: s(10),
+    minWidth: s(80),
     textAlign: 'center',
-    textShadowColor: 'rgba(255, 255, 255, 0.7)',
+    textShadowColor: 'rgba(0, 255, 255, 0.8)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
   },

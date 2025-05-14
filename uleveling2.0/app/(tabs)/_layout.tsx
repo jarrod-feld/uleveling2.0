@@ -35,7 +35,6 @@ export type TabKey = keyof typeof routes;
 type AnimationState = 'idle' | 'closing' | 'opening';
 
 export default function TabsLayout() {
-  console.log("[TabsLayout] Rendering...");
   const [key, setKey] = useState<TabKey>('dashboard');
   const [targetKey, setTargetKey] = useState<TabKey | null>(null);
   const [animationState, setAnimationState] = useState<AnimationState>('idle');
@@ -45,7 +44,6 @@ export default function TabsLayout() {
   const { notifications } = useNotificationContext();
 
   useEffect(() => {
-    console.log("[TabsLayout] Animation useEffect running. State:", animationState);
     if (animationState === 'closing') {
       prog.value = withTiming(0, { duration: DUR, easing: Easing.in(Easing.cubic) }, (finished) => {
         if (finished && targetKey) {
@@ -61,15 +59,12 @@ export default function TabsLayout() {
         }
       });
     }
-    console.log("[TabsLayout] Animation useEffect finished.");
   }, [animationState, targetKey, prog]);
 
   useEffect(() => {
-    console.log("[TabsLayout] Initial Mount useEffect running.");
     if (isInitialMount.current) {
       isInitialMount.current = false;
     }
-    console.log("[TabsLayout] Initial Mount useEffect finished.");
   }, []);
 
   const change = (next: TabKey) => {
@@ -80,7 +75,6 @@ export default function TabsLayout() {
   };
 
   const Current = routes[key];
-  console.log("[TabsLayout] Current tab component set to:", key);
 
   const animatedPanelStyle = useAnimatedStyle(() => {
     const height = interpolate(prog.value, [0, 1], [0, TAB_HEIGHT]);
@@ -90,7 +84,6 @@ export default function TabsLayout() {
 
   const shouldRenderContent = animationState === 'idle' || animationState === 'opening';
 
-  console.log("[TabsLayout] Preparing to return JSX...");
   return (
     <>
       <View style={styles.root}>
@@ -126,5 +119,6 @@ const styles = StyleSheet.create({
     paddingVertical: vs(10),
     alignItems: 'center',
     width: '100%',
+    flex: 1,
   },
 }); 

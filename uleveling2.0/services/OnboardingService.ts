@@ -12,7 +12,7 @@ const ONBOARDING_STEP_KEY = 'onboardingCurrentStep';
 const ONBOARDING_DATA_KEY = 'onboardingData';
 
 // Export the stage type
-export type OnboardingStage = 'idle' | 'starting' | 'saving_profile' | 'caching_onboarding_data' | 'persisting_onboarding_data' | 'generating_stats' | 'saving_stats' | 'generating_goals' | 'saving_goals' | 'generating_quests' | 'saving_quests' | 'completing' | 'done' | 'error';
+export type OnboardingStage = 'idle' | 'starting' | 'waiting_for_profile' | 'saving_profile' | 'caching_onboarding_data' | 'persisting_onboarding_data' | 'generating_stats' | 'saving_stats' | 'generating_goals' | 'saving_goals' | 'generating_quests' | 'saving_quests' | 'completing' | 'done' | 'error';
 
 class OnboardingService {
   /**
@@ -93,6 +93,44 @@ class OnboardingService {
   }
 
   /**
+   * Waits for the user's profile row to appear in the public.users table.
+   * Retries a few times with delays.
+   * @param userId The user ID to check.
+   * @param maxRetries Maximum number of retries.
+   * @param delayMs Delay between retries in milliseconds.
+   * @throws Error if profile is not found after retries.
+   */
+  private static async _waitForUserProfile(userId: string, maxRetries: number = 5, delayMs: number = 1500): Promise<void> {
+    console.log(`[OnboardingService] Waiting for profile row for user ${userId}...`);
+    for (let i = 0; i <= maxRetries; i++) {
+      const { data: profileData, error: profileError } = await AccountService.getProfile(userId);
+
+      // Check if profile exists
+      if (profileData) {
+        console.log(`[OnboardingService] Profile row found for user ${userId} after attempt ${i}.`);
+        return; // Profile exists, proceed
+      }
+
+      // Log specific error if it's not 'Not Found'
+      if (profileError && profileError.message && !profileError.message.includes('PGRST116')) {
+         console.error(`[OnboardingService] Error checking profile for user ${userId} (Attempt ${i}):`, profileError.message);
+         // Decide if we should throw immediately or continue retrying
+         // Throwing immediately might be better for unexpected errors
+         throw new Error(`Failed to check user profile due to error: ${profileError.message}`);
+      }
+
+      // Profile not found yet (PGRST116 or no data)
+      if (i < maxRetries) {
+        console.log(`[OnboardingService] Profile row not found for user ${userId} (Attempt ${i}). Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        console.error(`[OnboardingService] Profile row for user ${userId} not found after ${maxRetries} retries.`);
+        throw new Error(`User profile row did not appear in time for user ${userId}.`);
+      }
+    }
+  }
+
+  /**
    * Orchestrates the full onboarding completion flow: saves data, generates and saves stats, goals, and quests, caches them, and marks onboarding as completed.
    */
   static async completeOnboardingFlow(
@@ -110,6 +148,11 @@ class OnboardingService {
     reportProgress('starting');
     const TTL = 7 * 24 * 60 * 60;
     try {
+      // *** NEW STEP: Wait for profile row to be created by trigger ***
+      reportProgress('waiting_for_profile');
+      await this._waitForUserProfile(userId);
+      // ****************************************************************
+
       reportProgress('caching_onboarding_data');
       console.log(`[OnboardingService] Caching onboarding data for user ${userId}...`);
       await CacheService.set(`onboardingData_${userId}`, onboardingData, TTL);
@@ -159,8 +202,11 @@ class OnboardingService {
       if (questsGenError || !questsWithoutIds) throw questsGenError || new Error("Failed to generate initial quests");
       console.log(`[OnboardingService] Initial quests generated for user ${userId}:`, questsWithoutIds);
       reportProgress('saving_quests');
-      const { success: questsSaveSuccess, error: questsSaveError } = await QuestService.saveQuests(userId, questsWithoutIds as any);
+      // We need the quests with IDs returned from saveQuests if we want to cache them immediately
+      // Let's modify the call slightly to expect the data back, matching QuestService's updated signature
+      const { success: questsSaveSuccess, error: questsSaveError, data: savedQuestsWithIds } = await QuestService.saveQuests(userId, questsWithoutIds as any);
       if (!questsSaveSuccess) throw questsSaveError || new Error("Failed to save initial quests");
+      // savedQuestsWithIds contains the quests with DB IDs, which were already cached by saveQuests
 
       // 5. Update profile name *after* successful generation (fire and forget)
       if (onboardingData.name) {

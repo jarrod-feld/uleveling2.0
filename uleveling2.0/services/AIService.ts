@@ -1,7 +1,7 @@
 import OpenAI from 'openai'; // <-- Import OpenAI
 import { Quest, mockDailyQuests } from '@/mock/dashboardData';
 import { Goal, mockGoals } from '@/mock/roadmapData';
-import AIConfigService, { AIConfigType } from './AIConfigService'; // Import type
+import AIConfigService, { AIConfigType, GOAL_TEMPLATES } from './AIConfigService'; // Import type and GOAL_TEMPLATES
 import { AIConfig, StatBaseValues } from '@/types/ai';
 import AccountService from '@/services/AccountService'; // Import AccountService
 import { StatCategory } from '@/types/quest'; // Import StatCategory
@@ -19,26 +19,40 @@ import { StatCategory } from '@/types/quest'; // Import StatCategory
 
 // Updated helper to use raw DB profile data + transient onboarding data
 function createInitialGoalPrompt(dbProfile: any, onboardingData: any, config: AIConfig): string {
-  let prompt = config.basePrompt || '';
-  // Combine data - prioritize onboardingData if available, fallback to dbProfile or N/A
-  prompt += `Age: ${onboardingData?.age || dbProfile?.age || 'N/A'}\n`; // Assuming age isn't in DB profile yet
-  prompt += `Gender: ${onboardingData?.gender || dbProfile?.gender || 'N/A'}\n`; // Assuming gender isn't in DB profile yet
-  prompt += `Life Status: Working: ${onboardingData?.lifeStatus?.working ? 'Yes' : 'No'}, School: ${onboardingData?.lifeStatus?.school ? 'Yes' : 'No'}\n`;
-  prompt += `Sleep/Wake: ${onboardingData?.sleepWake || 'N/A'} / ${onboardingData?.sleepBed || 'N/A'}\n`;
-  prompt += `Hours Work/School: ${onboardingData?.hoursWork || 'N/A'} / ${onboardingData?.hoursSchool || 'N/A'}\n`;
-  prompt += `Focus Areas: ${Object.keys(onboardingData?.focusAreas || {}).filter(k => onboardingData?.focusAreas?.[k]).join(', ') || 'None specified'}\n`;
-  if (onboardingData?.focusAreasOtherText) prompt += `Other Focus: ${onboardingData.focusAreasOtherText}\n`;
-  prompt += `Roadmap Choice: ${onboardingData?.roadmapChoice || 'N/A'}\n`;
-  if (onboardingData?.roadmapChoice === 'Create' && onboardingData.goals) {
-    prompt += `Initial Goal Ideas: ${onboardingData.goals.map((g: any) => `${g.description} (${g.timeframe})`).join('; ')}\n`;
-  } else if (onboardingData?.roadmapChoice === 'Template') {
-    prompt += `Chosen Template: ${onboardingData.template || 'N/A'} (Intensity: ${onboardingData.templateIntensity || 'N/A'})\n`;
-  }
-  // Add persistent profile info
-  prompt += `User Name (from profile): ${dbProfile?.name || 'Player'}\n`;
-  prompt += `User Level (from profile): ${dbProfile?.level || 1}\n`;
+  let basePrompt = config.basePrompt || '';
 
-  return prompt;
+  // Common user profile string for both prompt types
+  let userProfileString = `Age: ${onboardingData?.age || dbProfile?.age || 'N/A'}\n`;
+  userProfileString += `Gender: ${onboardingData?.gender || dbProfile?.gender || 'N/A'}\n`;
+  userProfileString += `Life Status: Working: ${onboardingData?.lifeStatus?.working ? 'Yes' : 'No'}, School: ${onboardingData?.lifeStatus?.school ? 'Yes' : 'No'}\n`;
+  userProfileString += `Sleep/Wake: ${onboardingData?.sleepWake || 'N/A'} / ${onboardingData?.sleepBed || 'N/A'}\n`;
+  userProfileString += `Hours Work/School: ${onboardingData?.hoursWork || 'N/A'} / ${onboardingData?.hoursSchool || 'N/A'}\n`;
+  userProfileString += `Focus Areas: ${Object.keys(onboardingData?.focusAreas || {}).filter(k => onboardingData?.focusAreas?.[k]).join(', ') || 'None specified'}\n`;
+  if (onboardingData?.focusAreasOtherText) userProfileString += `Other Focus: ${onboardingData.focusAreasOtherText}\n`;
+  userProfileString += `Roadmap Choice: ${onboardingData?.roadmapChoice || 'N/A'}\n`; // Included for context even in template mode
+  // Persistent profile info (always add)
+  userProfileString += `User Name (from profile): ${dbProfile?.name || 'Player'}\n`;
+  userProfileString += `User Level (from profile): ${dbProfile?.level || 1}\n`;
+
+  if (onboardingData?.roadmapChoice === 'Template') {
+    const templateName = onboardingData.template || 'N/A';
+    const templateDetails = GOAL_TEMPLATES[templateName] || { description: 'Not found', keywords: [], defaultCategory: 'INT' };
+    const templateIntensity = onboardingData.templateIntensity || 'N/A';
+
+    basePrompt = basePrompt.replace('{user_profile}', userProfileString.trim());
+    basePrompt = basePrompt.replace('{template_name}', templateName);
+    basePrompt = basePrompt.replace('{template_description}', templateDetails.description);
+    basePrompt = basePrompt.replace('{template_keywords}', templateDetails.keywords.join(', '));
+    basePrompt = basePrompt.replace('{template_intensity}', templateIntensity);
+    basePrompt = basePrompt.replace('{template_category}', templateDetails.defaultCategory);
+  } else { // 'Create' or other/default mode
+    let customGoalPrompt = basePrompt.replace('{user_profile}', userProfileString.trim());
+    if (onboardingData?.roadmapChoice === 'Create' && onboardingData.goals) {
+      customGoalPrompt += `Initial Goal Ideas: ${onboardingData.goals.map((g: any) => `${g.description} (${g.timeframe})`).join('; ')}\n`;
+    }
+    basePrompt = customGoalPrompt;
+  }
+  return basePrompt;
 }
 
 // Updated helper to use raw DB profile data + transient onboarding data
@@ -221,31 +235,39 @@ class AIService {
     try {
       // Fetch persistent profile data from DB
       const { data: dbProfile, error: profileError } = await AccountService.getProfile(userId);
-      // Allow proceeding even if DB profile fetch fails, using onboardingData
       if (profileError) {
         console.warn(`[AIService] Failed to fetch DB profile for ${userId} during goal gen, proceeding with onboarding data only. Error:`, profileError.message);
       }
 
-      const config = await AIConfigService.getAIConfig('initialGoalGeneration');
-      // Pass both DB profile (if available) and onboardingData to prompt creator
+      // Determine config type based on roadmap choice
+      const goalConfigType: AIConfigType = onboardingData?.roadmapChoice === 'Template' ? 'templateGoalGeneration' : 'initialGoalGeneration';
+      console.log(`[AIService] Selected goal config type: ${goalConfigType}`);
+      const config = await AIConfigService.getAIConfig(goalConfigType);
+      
       const systemPrompt = createInitialGoalPrompt(dbProfile, onboardingData, config);
       const client = this.getClient(config.apiKey);
 
       console.log('[AIService] Sending prompt to OpenAI for initial goals...');
-      const completion = await client.chat.completions.create({
-        messages: [
-          { role: "system", content: "You are a helpful assistant designing personalized self-improvement goals." },
-          { role: "user", content: systemPrompt }
-        ],
+      const completion = await client.responses.create({
         model: config.modelName,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        response_format: { type: "json_object" },
+        input: [
+            { role: "user", content: systemPrompt }
+        ],
+        reasoning: { effort: "medium" },
+        max_output_tokens: config.maxTokens,
       });
+      console.log('[AIService] OpenAI responses.create call returned for initial goals.');
+      console.log(`[AIService] Goal generation response status: ${completion.status}`);
+      if (completion.status === "incomplete" && completion.incomplete_details) {
+          console.warn(`[AIService] Goal generation incomplete: ${completion.incomplete_details.reason}`);
+          if (completion.incomplete_details.reason === "max_output_tokens") {
+              console.warn("[AIService] Ran out of tokens for goal generation.");
+          }
+      }
 
-      const responseText = completion.choices[0]?.message?.content;
-      if (!responseText) {
-        throw new Error('OpenAI API returned empty content for initial goals.');
+      const responseText = completion.output_text;
+      if (!responseText && completion.status !== "incomplete") {
+        throw new Error('OpenAI API returned empty content for initial goals and status was not incomplete.');
       }
       console.log('[AIService] Received goal response from OpenAI.');
 
@@ -282,20 +304,26 @@ class AIService {
       const client = this.getClient(config.apiKey);
 
       console.log('[AIService] Sending prompt to OpenAI for initial quests...');
-      const completion = await client.chat.completions.create({
-        messages: [
-          { role: "system", content: "You are a helpful assistant designing personalized initial daily quests based on user goals." },
-          { role: "user", content: systemPrompt }
-        ],
+      const completion = await client.responses.create({
         model: config.modelName,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        response_format: { type: "json_object" },
+        input: [
+            { role: "user", content: systemPrompt }
+        ],
+        reasoning: { effort: "medium" },
+        max_output_tokens: config.maxTokens,
       });
+      console.log('[AIService] OpenAI responses.create call returned for initial quests.');
+      console.log(`[AIService] Initial quest generation response status: ${completion.status}`);
+      if (completion.status === "incomplete" && completion.incomplete_details) {
+          console.warn(`[AIService] Initial quest generation incomplete: ${completion.incomplete_details.reason}`);
+          if (completion.incomplete_details.reason === "max_output_tokens") {
+              console.warn("[AIService] Ran out of tokens for initial quest generation.");
+          }
+      }
 
-      const responseText = completion.choices[0]?.message?.content;
-      if (!responseText) {
-        throw new Error('OpenAI API returned empty content for initial quests.');
+      const responseText = completion.output_text;
+      if (!responseText && completion.status !== "incomplete") {
+        throw new Error('OpenAI API returned empty content for initial quests and status was not incomplete.');
       }
       console.log('[AIService] Received initial quest response from OpenAI.');
 
@@ -332,19 +360,27 @@ class AIService {
        const systemPrompt = createDailyPrompt(dbProfile, context, config);
 
        console.log('[AIService] Sending prompt to OpenAI for daily quests...');
-       const completion = await client.chat.completions.create({
-         messages: [
-           { role: "system", content: "You are a helpful assistant designing personalized daily self-improvement quests." },
-           { role: "user", content: systemPrompt }
-         ],
-         model: config.modelName,
-         max_tokens: config.maxTokens,
-         temperature: config.temperature,
-         response_format: { type: "json_object" },
-       });
+       const completion = await client.responses.create({
+        model: config.modelName,
+        input: [
+            { role: "user", content: systemPrompt }
+        ],
+        reasoning: { effort: "medium" },
+        max_output_tokens: config.maxTokens,
+      });
+      console.log('[AIService] OpenAI responses.create call returned for daily quests.');
+      console.log(`[AIService] Daily quest generation response status: ${completion.status}`);
+      if (completion.status === "incomplete" && completion.incomplete_details) {
+          console.warn(`[AIService] Daily quest generation incomplete: ${completion.incomplete_details.reason}`);
+          if (completion.incomplete_details.reason === "max_output_tokens") {
+              console.warn("[AIService] Ran out of tokens for daily quest generation.");
+          }
+      }
 
-       const responseText = completion.choices[0]?.message?.content;
-       if (!responseText) { throw new Error('OpenAI API returned empty content for daily quests.'); }
+       const responseText = completion.output_text;
+       if (!responseText && completion.status !== "incomplete") {
+        throw new Error('OpenAI API returned empty content for daily quests and status was not incomplete.');
+       }
        console.log('[AIService] Received response from OpenAI for daily quests.');
 
        // Parse Quest Response (Simulated)
@@ -380,22 +416,28 @@ class AIService {
 
       const client = this.getClient(config.apiKey);
       console.log('[AIService] Sending prompt to OpenAI for initial stats...');
-      const completion = await client.chat.completions.create({
-        messages: [
-          { role: "system", content: "You are an assistant assigning initial game stats based on user answers." },
-          { role: "user", content: systemPrompt }
-        ],
+      const completion = await client.responses.create({
         model: config.modelName,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        response_format: { type: "json_object" },
+        input: [
+            { role: "user", content: systemPrompt }
+        ],
+        reasoning: { effort: "medium" },
+        max_output_tokens: config.maxTokens,
       });
 
-      console.log('[AIService] OpenAI chat.completions.call returned for stats.');
-      const responseText = completion.choices[0]?.message?.content;
+      console.log('[AIService] OpenAI responses.create call returned for stats.');
+      console.log(`[AIService] Initial stat generation response status: ${completion.status}`);
+      if (completion.status === "incomplete" && completion.incomplete_details) {
+          console.warn(`[AIService] Initial stat generation incomplete: ${completion.incomplete_details.reason}`);
+          if (completion.incomplete_details.reason === "max_output_tokens") {
+              console.warn("[AIService] Ran out of tokens for initial stat generation.");
+          }
+      }
+
+      const responseText = completion.output_text;
       console.log('[AIService] AI responseText for stats:', responseText);
-      if (!responseText) {
-        throw new Error('OpenAI API returned empty content for initial stats.');
+      if (!responseText && completion.status !== "incomplete") {
+        throw new Error('OpenAI API returned empty content for initial stats and status was not incomplete.');
       }
       console.log('[AIService] Received stat response from OpenAI.');
 

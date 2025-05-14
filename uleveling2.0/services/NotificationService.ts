@@ -20,7 +20,6 @@ export function useNotificationService() {
           if (newState.length > MAX_NOTIFICATIONS) {
              newState = newState.slice(-MAX_NOTIFICATIONS);
           }
-          console.log(`[useNotificationService] Updated notifications state:`, JSON.stringify(newState));
           return newState;
        });
   }, []);
@@ -28,7 +27,6 @@ export function useNotificationService() {
   // Keep original for stat increases
   const addStatNotification = useCallback((statLabel: string, amount: number) => {
     if (amount > 0) { // Only positive stats for now
-        console.log(`[useNotificationService] addStatNotification called: Label=${statLabel}, Amount=${amount}`);
         addNotification({
             type: 'stat',
             statLabel,
@@ -39,7 +37,6 @@ export function useNotificationService() {
 
   // New function for quest status notifications
   const addQuestNotification = useCallback((questStatus: QuestStatus, questTitle: string) => {
-    console.log(`[useNotificationService] addQuestNotification called: Status=${questStatus}, Title=${questTitle}`);
     addNotification({
         type: 'quest',
         questStatus,
@@ -49,7 +46,6 @@ export function useNotificationService() {
 
   // Function for achievement notifications
   const addAchievementNotification = useCallback((achievementTitle: string) => {
-      console.log(`[useNotificationService] addAchievementNotification called: Title=${achievementTitle}`);
       addNotification({
           type: 'achievement',
           achievementTitle,
@@ -57,7 +53,6 @@ export function useNotificationService() {
   }, [addNotification]);
 
   const clearNotifications = useCallback(() => {
-    console.log('[useNotificationService] clearNotifications called');
     setNotifications([]);
   }, []);
 

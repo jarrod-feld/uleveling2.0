@@ -164,9 +164,9 @@ export default function OnboardingIndex() {
         // Only redirect to dashboard if onboarding is completed
         const onboardingCompleted = await OnboardingService.isCompleted();
         if (session && onboardingCompleted) {
-          console.log('[OnboardingIndex] Active session found and onboarding completed. Redirecting to dashboard...');
+          console.log('[OnboardingIndex] Active session found and onboarding completed. Redirecting to root for App Index to handle dashboard navigation...');
           setIsNavigating(true); // Prevent rendering onboarding steps
-          router.replace('/(tabs)/dashboard' as any);
+          router.replace('/' as any); // Changed to root
           // Keep isCheckingAuth true until navigation completes to avoid flashing UI
         } else {
           console.log('[OnboardingIndex] No active session or onboarding not completed. Starting onboarding.');
@@ -212,8 +212,8 @@ export default function OnboardingIndex() {
     // If on the final step, navigate to dashboard when generation complete
     if (currentStep === TOTAL_STEPS - 1) {
       if (generationComplete) {
-        console.log("[OnboardingIndex] handleNext: Generation complete, navigating to dashboard.");
-        router.replace('/(tabs)/dashboard' as any);
+        console.log("[OnboardingIndex] handleNext: Generation complete, navigating to root for App Index to handle dashboard navigation.");
+        router.replace('/' as any); // Changed to root
       } else {
         console.log("[OnboardingIndex] handleNext: Generation not complete, blocking navigation.");
       }

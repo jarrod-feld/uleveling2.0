@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ScrollView, StyleSheet, View, Text, ActivityIndicator, RefreshControl } from 'react-native';
 // import SoloPopup from '@/components/common/SoloPopup'; // Removed for now
 import ProgressHeader from '@/components/roadmap/ProgressHeader';
@@ -11,11 +11,12 @@ import { useAuth } from '@/contexts/UserContext'; // Import useAuth
 import RoadmapService from '@/services/RoadmapService'; // Import RoadmapService
 
 export default function RoadmapTab() {
+  console.log("[RoadmapTab] Component rendered/re-rendered.");
   const { user, isLoading: isAuthLoading } = useAuth(); // Get user and auth loading status
   const userId = user?.id;
 
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [isLoadingGoals, setIsLoadingGoals] = useState<boolean>(false);
+  const [isLoadingGoals, setIsLoadingGoals] = useState<boolean>(false); // Default to true initially to show loader
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatCategory>('ALL'); 
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
@@ -23,14 +24,15 @@ export default function RoadmapTab() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchGoals = useCallback(async (id: string) => {
-    console.log(`[RoadmapTab] Fetching goals for user: ${id}`);
+    console.log(`[RoadmapTab] fetchGoals called for user: ${id}`);
     setIsLoadingGoals(true);
     setError(null);
     try {
       const { data: fetchedGoals, error: fetchError } = await RoadmapService.getGoals(id);
+      console.log("[RoadmapTab] fetchGoals - RoadmapService.getGoals response:", { fetchedGoals, fetchError });
       if (fetchError) throw fetchError;
       setGoals(fetchedGoals || []);
-      console.log(`[RoadmapTab] Fetched ${fetchedGoals?.length || 0} goals.`);
+      console.log(`[RoadmapTab] fetchGoals - goals state updated with ${fetchedGoals?.length || 0} goals.`);
     } catch (err: any) {
       console.error("[RoadmapTab] Error fetching goals:", err);
       setError("Failed to load roadmap goals. Please try again.");
@@ -42,26 +44,34 @@ export default function RoadmapTab() {
   }, []);
 
   useEffect(() => {
+    console.log(`[RoadmapTab] useEffect for userId/isAuthLoading triggered. userId: ${userId}, isAuthLoading: ${isAuthLoading}`);
     if (userId) {
+      console.log(`[RoadmapTab] useEffect: userId is present (${userId}), calling fetchGoals.`);
       fetchGoals(userId);
-    } else if (!isAuthLoading) {
-      // If auth is not loading and there's still no userId, handle appropriately
+    } else if (!isAuthLoading && !userId) {
+      console.log("[RoadmapTab] useEffect: Auth is not loading and no userId. Setting error.");
       setError("User not found. Cannot load goals.");
       setGoals([]);
+      setIsLoadingGoals(false); // Ensure loader stops if no user
     }
     // Dependency: Trigger fetch when userId becomes available or changes, or when auth loading finishes
   }, [userId, isAuthLoading, fetchGoals]);
 
   const onRefresh = useCallback(() => {
     if (userId) {
+      console.log("[RoadmapTab] onRefresh called.");
       setIsRefreshing(true);
       fetchGoals(userId);
     }
   }, [userId, fetchGoals]);
 
-  const filteredGoals = filter === 'ALL'
-    ? goals
-    : goals.filter((g: Goal) => g.category === filter);
+  const filteredGoals = useMemo(() => {
+    const result = filter === 'ALL'
+      ? goals
+      : goals.filter((g: Goal) => g.category === filter);
+    console.log("[RoadmapTab] Recalculated filteredGoals. Filter:", filter, "Original goals count:", goals.length, "Filtered count:", result.length);
+    return result;
+  }, [goals, filter]);
 
   const handleGoalPress = (goal: Goal) => {
     setSelectedGoal(goal);
@@ -76,43 +86,45 @@ export default function RoadmapTab() {
     setSelectedGoal(null);
   };
 
+  console.log("[RoadmapTab] States before render - isLoadingGoals:", isLoadingGoals, "isRefreshing:", isRefreshing, "error:", error, "goals count:", goals.length, "filteredGoals count:", filteredGoals.length);
+
   // --- Loading and Error States ---
-  if (isLoadingGoals && !isRefreshing) { // Show full screen loader only on initial load
+  if (isLoadingGoals && !isRefreshing) { 
+    console.log("[RoadmapTab] Rendering: Full screen loading indicator.");
     return (
-      <View style={[styles.container, styles.centered]}>
+      <View style={[styles.container, styles.centered]}> {/* Removed temp bg */}
         <ActivityIndicator size="large" color="#fff" />
         <Text style={styles.loadingText}>Loading Roadmap...</Text>
       </View>
     );
   }
 
-  if (error && !isRefreshing) { // Show error only if not refreshing
+  if (error && !isRefreshing && !isLoadingGoals) { 
+    console.log("[RoadmapTab] Rendering: Error message.");
     return (
-      <View style={[styles.container, styles.centered]}>
+      <View style={[styles.container, styles.centered]}> {/* Removed temp bg */}
         <Text style={styles.errorText}>{error}</Text>
-        {/* Optionally add a retry button */}
       </View>
     );
   }
   // --------------------------------
+  console.log("[RoadmapTab] Rendering: Main content with goals list.");
 
   return (
-    // Use a View wrapper if needed, or SafeAreaView
     <View style={styles.container}> 
-      {/* Remove filter props from ProgressHeader */}
       <ProgressHeader /> 
-      {/* Add the new CategoryFilterNav */}
       <CategoryFilterNav filter={filter} onChange={setFilter} />
       <ScrollView
+        style={styles.scrollViewDebug} // Removed direct lime background
         contentContainerStyle={styles.body}
-        alwaysBounceVertical={false} // Prefer this over alwaysBounceHorizontal={false}
-        showsVerticalScrollIndicator={false} // Use vertical indicator
+        alwaysBounceVertical={false} 
+        showsVerticalScrollIndicator={false} 
         directionalLockEnabled
-        refreshControl={ // Add pull-to-refresh
+        refreshControl={ 
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={onRefresh}
-            tintColor="#ffffff" // Color of the spinner
+            tintColor="#ffffff" 
           />
         }
       >
@@ -122,11 +134,10 @@ export default function RoadmapTab() {
           </Text>
         )}
         {filteredGoals.map((g: Goal) => (
-          <GoalRow key={g.id} goal={g} onPress={handleGoalPress} /> // Pass onPress handler
+          <GoalRow key={g.id} goal={g} onPress={handleGoalPress} /> 
         ))}
       </ScrollView>
 
-      {/* Render the popup */}
       <GoalDetailPopup
         visible={isPopupVisible}
         onClose={handleClosePopup}
@@ -140,10 +151,10 @@ export default function RoadmapTab() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1, // Ensure container takes full height
-    backgroundColor: '#002A35', // Assuming this is the background color
+    flex: 1, 
+    backgroundColor: '#002A35', // Restored original background
   },
-  centered: { // Style for loading/error states
+  centered: { 
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -153,21 +164,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   errorText: {
-    color: '#ff6b6b', // Red color for errors
+    color: '#ff6b6b',
     fontSize: 16,
     textAlign: 'center',
     paddingHorizontal: 20,
   },
   emptyText: {
-    color: '#a8b2d1', // Lighter text for empty state
+    color: '#a8b2d1',
     fontSize: 14,
     textAlign: 'center',
     marginTop: vScale(40),
     paddingHorizontal: 20,
   },
-  body: { 
-    paddingHorizontal: vScale(20), // Add horizontal padding consistent with nav
+  scrollViewDebug: { 
+    flex: 1, 
+    // backgroundColor: 'lime', // Removed temp background
+  },
+  body: { // ScrollView contentContainerStyle
+    paddingHorizontal: vScale(20), 
     paddingBottom: vScale(120), 
-    flexGrow: 1 
+    flexGrow: 1, 
+    // backgroundColor: 'orange', // Removed temp background
   } 
 }); 

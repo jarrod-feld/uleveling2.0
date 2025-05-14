@@ -6,10 +6,13 @@ import { StatCategory } from './quest'; // Assuming StatCategory is defined here
 export interface AIConfig {
   apiKey: string;
   modelName: string;
-  maxTokens: number;
-  temperature: number;
+  maxTokens?: number;
+  temperature?: number;
+  max_output_tokens?: number;
   basePrompt?: string; // Optional base prompt part
-  // Add other potential config fields like API keys, endpoints etc. if needed
+  reasoning?: {
+    effort: string;
+  };
 }
 
 // Type for the object returned by AI stat generation

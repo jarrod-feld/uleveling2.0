@@ -13,6 +13,7 @@ import AchievementService, { UserAchievementStatus } from '@/services/Achievemen
 import { useNotificationContext } from '@/contexts/NotificationContext';
 import { getAchievementDefinition, TitleReward } from '@/data/achievementsData';
 import UserService from '@/services/UserService';
+import OnboardingService from '@/services/OnboardingService';
 
 // Define stat increment amount centrally if needed, or use the one in StatService
 const DEFAULT_STAT_INCREMENT_ON_QUEST_COMPLETE = 1;
@@ -109,7 +110,6 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
   const { addStatNotification, addQuestNotification, addAchievementNotification } = useNotificationContext();
 
   const handleSignOut = useCallback(async () => {
-    console.log('[UserContext] Initiating sign out...');
     setIsLoading(true);
     const { error } = await AccountService.signOut();
     if (error) {
@@ -122,14 +122,12 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
   // --- Fetch All User Data ---
   const fetchAllUserData = useCallback(async (userId: string, sessionUser: User | null) => {
     let isMounted = true;
-    console.log(`[UserContext] Fetching all user data for: ${userId}, sessionUser ID: ${sessionUser?.id}`);
     setIsLoading(true);
     setIsProfileLoading(true);
     setIsAchievementLoading(true);
 
     try {
       const { data: rawProfileData, error: profileError } = await AccountService.getProfile(userId);
-      console.log(`[UserContext] fetchAllUserData: AccountService.getProfile for ${userId} returned - rawProfileData:`, rawProfileData, "Error:", profileError);
 
       if (!isMounted) return;
       if (profileError) {
@@ -139,49 +137,67 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
         return;
       }
       if (!rawProfileData) {
-        const userCreationTime = sessionUser?.created_at ? new Date(sessionUser.created_at).getTime() : 0;
-        const now = new Date().getTime();
-        const tenSeconds = 10 * 1000;
+        const onboardingPreviouslyCompleted = await OnboardingService.isCompleted();
 
-        if (sessionUser && userCreationTime > (now - tenSeconds)) {
-          console.warn(`[UserContext] Profile for user ${userId} not found, but user was created recently. Retrying profile fetch shortly...`);
-          let retries = 2;
-          let tempRawProfileData = null;
-          let tempProfileError = null;
-          for (let i = 0; i < retries; i++) {
-            await new Promise(resolve => setTimeout(resolve, 1500 * (i + 1)));
-            if (!isMounted) return;
-            console.log(`[UserContext] Retrying AccountService.getProfile for ${userId} (Attempt ${i + 1})`);
-            const retryResult = await AccountService.getProfile(userId);
-            tempRawProfileData = retryResult.data;
-            tempProfileError = retryResult.error;
-            console.log(`[UserContext] Retry ${i + 1} result - rawProfileData:`, tempRawProfileData, "Error:", tempProfileError);
-            if (tempRawProfileData) break;
-            if (tempProfileError) break;
-          }
+        if (onboardingPreviouslyCompleted) {
+          const userCreationTime = sessionUser?.created_at ? new Date(sessionUser.created_at).getTime() : 0;
+          const now = new Date().getTime();
+          const tenSeconds = 10 * 1000;
 
-          if (tempProfileError) {
-             console.error('[UserContext] Error fetching profile even after retries:', tempProfileError.message);
-             console.warn('[UserContext] Profile fetch failed after retries, initiating sign out.');
-             await handleSignOut();
-             return;
-          }
-          if (!tempRawProfileData) {
-            console.warn(`[UserContext] Profile for user ${userId} still not found after retries. Signing out.`);
+          if (sessionUser && userCreationTime > (now - tenSeconds)) {
+            console.warn(`[UserContext] Profile for user ${userId} not found, but user was created recently (and onboarding was complete). Retrying profile fetch shortly...`);
+            let retries = 2;
+            let tempRawProfileData = null;
+            let tempProfileError = null;
+            for (let i = 0; i < retries; i++) {
+              await new Promise(resolve => setTimeout(resolve, 1500 * (i + 1)));
+              if (!isMounted) return;
+              const retryResult = await AccountService.getProfile(userId);
+              tempRawProfileData = retryResult.data;
+              tempProfileError = retryResult.error;
+              if (tempRawProfileData) break;
+              if (tempProfileError && tempProfileError.message.includes('PGRST116')) continue; 
+              if (tempProfileError) break; 
+            }
+
+            if (tempProfileError && !tempRawProfileData) {
+               console.error('[UserContext] Error fetching profile even after retries (onboarding complete):', tempProfileError.message);
+               console.warn('[UserContext] Profile fetch failed after retries (onboarding complete), initiating sign out.');
+               await handleSignOut();
+               return;
+            }
+            if (!tempRawProfileData) {
+              console.warn(`[UserContext] Profile for user ${userId} still not found after retries (onboarding complete). Signing out.`);
+              await handleSignOut();
+              return;
+            }
+            (rawProfileData as any) = tempRawProfileData; 
+          } else {
+            console.warn(`[UserContext] Profile for user ${userId} not found (user not recent or already existed, and onboarding was complete). Signing out.`);
             await handleSignOut();
             return;
           }
-          (rawProfileData as any) = tempRawProfileData; 
         } else {
-          console.warn(`[UserContext] Profile for user ${userId} not found (user not recent or already existed). Signing out.`);
-          await handleSignOut();
-          return;
+          console.warn(`[UserContext] Profile for user ${userId} not found, but onboarding is not yet complete. Proceeding with null profile for now. Onboarding flow should handle profile creation.`);
         }
       }
       if (!rawProfileData) {
-        console.error('[UserContext] CRITICAL: rawProfileData is null even after potential retries. Cannot proceed.');
-        await handleSignOut();
-        return;
+        setProfile(null);
+        setStats(null);
+        const questsCount = 0; 
+        const [achStatusResult, unlockedTitlesResult] = await Promise.all([
+            AchievementService.getAllAchievementsStatus(userId, null, null, questsCount),
+            TitleService.getUnlockedTitles(userId)
+        ]);
+        if (isMounted) {
+            if (achStatusResult.error) console.error('[UserContext] Error fetching achievement status (profile null):', achStatusResult.error.message);
+            if (unlockedTitlesResult.error) console.error('[UserContext] Error fetching unlocked titles (profile null):', unlockedTitlesResult.error.message);
+            setAchievementsStatus(achStatusResult.data ?? []);
+            setAvailableTitles(unlockedTitlesResult.data ?? []);
+            setIsProfileLoading(false);
+            setIsAchievementLoading(false);
+        }
+        return () => { isMounted = false; }; 
       }
 
       const [titleResult, statsResult] = await Promise.all([
@@ -214,8 +230,6 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
         title: currentTitle,
         completed_quests_count: rawProfileData.completed_quests_count,
       };
-      console.log('[UserContext] Combined profile constructed:', combinedProfile);
-
 
       const questsCount = combinedProfile.completed_quests_count ?? 0;
       const [achStatusResult, unlockedTitlesResult] = await Promise.all([
@@ -228,14 +242,11 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
         if (unlockedTitlesResult.error) console.error('[UserContext] Error fetching unlocked titles:', unlockedTitlesResult.error.message);
 
         setProfile(combinedProfile);
-        console.log('[UserContext] Profile state updated:', combinedProfile);
         setStats(fetchedStatsData);
-        console.log('[UserContext] Stats state updated:', fetchedStatsData);
         setAchievementsStatus(achStatusResult.data ?? []);
         setAvailableTitles(unlockedTitlesResult.data ?? []);
         setIsProfileLoading(false);
         setIsAchievementLoading(false);
-        console.log('[UserContext] All user data fetched and states updated.');
       }
 
     } catch (err: unknown) {
@@ -260,27 +271,21 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
 
   // --- Auth State Change Listener ---
   useEffect(() => {
-    console.log('[UserContext] Setting up auth listener.');
     let isMounted = true;
     let unsubscribeAuth: (() => void) | undefined;
 
     async function initialLoad() {
-      console.log('[UserContext] Attempting initial session load...');
       const { session: initialSession, error: sessionError } = await AccountService.getSession();
       if (!isMounted) return;
       if (sessionError) console.error('[UserContext] Error checking session on initial load:', sessionError.message);
 
       const initialUser = initialSession?.user ?? null;
-      console.log(`[UserContext] initialLoad: Determined initialUser as:`, initialUser);
 
       setSession(initialSession);
       setUser(initialUser);
-      console.log(`[UserContext] initialLoad: Called setSession and setUser. User ID in context state should now be: ${initialUser?.id ?? 'null'}`);
 
       if (initialUser) {
-        console.log(`[UserContext] initialLoad: User ${initialUser.id} found. Fetching all user data...`);
         const cleanupFetch = await fetchAllUserData(initialUser.id, initialUser);
-        console.log(`[UserContext] initialLoad: Completed fetchAllUserData for user ${initialUser.id}.`);
         try {
           const dismissedStatus = await UserService.isWarningDismissedToday(initialUser.id);
           if (isMounted) setIsWarningDismissedToday(dismissedStatus);
@@ -290,7 +295,6 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
         }
         return cleanupFetch;
       } else {
-        console.log('[UserContext] initialLoad: No initial user session found. Clearing states.');
         setProfile(null);
         setStats(null);
         setAchievementsStatus([]);
@@ -306,19 +310,13 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
 
     const { data: { subscription } } = AccountService.onAuthStateChange(async (event, currentSession) => {
       if (!isMounted) return;
-      console.log(`[UserContext] Auth Event Received: ${event}, Session User ID: ${currentSession?.user?.id ?? 'null'}`);
       const currentUser = currentSession?.user ?? null;
-      console.log(`[UserContext] onAuthStateChange: currentUser object determined as:`, currentUser);
       setSession(currentSession);
       setUser(currentUser);
-      console.log(`[UserContext] onAuthStateChange: Called setSession and setUser. User ID in context state should now be: ${currentUser?.id ?? 'null'}`);
 
       if (event === 'SIGNED_IN' && currentUser) {
-        console.log(`[UserContext] SIGNED_IN event for user: ${currentUser.id}. Starting fetchAllUserData...`);
         await fetchAllUserData(currentUser.id, currentUser);
-        console.log(`[UserContext] SIGNED_IN event for user: ${currentUser.id}. Completed fetchAllUserData.`);
       } else if (event === 'SIGNED_OUT') {
-        console.log('[UserContext] SIGNED_OUT event. Clearing user-specific states.');
         setProfile(null);
         setStats(null);
         setAchievementsStatus([]);
@@ -328,11 +326,8 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
         setIsAchievementLoading(false);
         setIsWarningDismissedToday(false);
       } else if (event === 'USER_UPDATED' && currentUser) {
-        console.log(`[UserContext] USER_UPDATED event for user: ${currentUser.id}. Starting fetchAllUserData...`);
         await fetchAllUserData(currentUser.id, currentUser);
-        console.log(`[UserContext] USER_UPDATED event for user: ${currentUser.id}. Completed fetchAllUserData.`);
       } else if (event === 'INITIAL_SESSION' && !currentUser) {
-        console.log('[UserContext] INITIAL_SESSION event via onAuthStateChange with no user. Clearing states if not already cleared.');
         setProfile(null);
         setStats(null);
         setAchievementsStatus([]);
@@ -341,16 +336,13 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
         setIsProfileLoading(false);
         setIsAchievementLoading(false);
         setIsWarningDismissedToday(false);
-      } else if (currentUser) {
-        console.log(`[UserContext] onAuthStateChange: Event ${event} for user ${currentUser.id} occurred. No specific data fetch triggered.`);
-      }
+      } 
     });
     unsubscribeAuth = subscription?.unsubscribe;
 
     return () => {
       isMounted = false;
       if (unsubscribeAuth) {
-        console.log('[UserContext] Unsubscribing from onAuthStateChange.');
         unsubscribeAuth();
       }
       initialLoadCleanupPromise.then(cleanup => { if (typeof cleanup === 'function') cleanup(); });
@@ -373,14 +365,12 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
 
   // --- Update User Profile ---
   const handleUpdateUserProfile = useCallback(async (profileData: UserProfileUpdateData): Promise<{ error: Error | null }> => {
-    if (!user?.id) { // Check user.id directly from state, as it should be up-to-date
+    if (!user?.id) { 
         const err = new Error("User not available for profile update.");
         console.error(`[UserContext] ${err.message}`);
         return { error: err };
     }
     const userId = user.id;
-    console.log('[UserContext] Updating profile with:', profileData);
-    setIsProfileLoading(true);
     let updateError: Error | null = null;
 
     try {
@@ -388,24 +378,30 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
       if (serviceError) throw serviceError;
       if (!updatedDbProfile) throw new Error('Profile update failed to return data.');
       
-      console.log('[UserContext] Profile updated in DB, refetching all user data with current user object...');
-      // Pass the current 'user' state object to fetchAllUserData
-      await fetchAllUserData(userId, user);
+      setProfile(prevProfile => {
+        if (!prevProfile) return null; 
+
+        const newCoreProfile: UserProfile = {
+          ...prevProfile,
+          name: updatedDbProfile.name ?? prevProfile.name,
+          level: updatedDbProfile.level ?? prevProfile.level,
+          completed_quests_count: updatedDbProfile.completed_quests_count ?? prevProfile.completed_quests_count,
+          title: profileData.title_id !== undefined 
+                 ? (profileData.title_id === null ? null : prevProfile.title?.id === profileData.title_id ? prevProfile.title : availableTitles.find(t => t.id === profileData.title_id) || null) 
+                 : prevProfile.title,
+        };
+        return newCoreProfile;
+      });
 
     } catch (err) {
-        console.error('[UserContext] Error updating user profile:', err);
+        console.error('[UserContext] Error updating user profile:', getErrorMessage(err));
         updateError = new Error(getErrorMessage(err));
-    } finally {
-        setIsProfileLoading(false);
     }
     return { error: updateError };
-  // Ensure dependencies are correct, user object itself is a dependency
-  }, [user, fetchAllUserData]);
+  }, [user, availableTitles]); 
 
   // --- Update Title ---
   const handleUpdateTitle = useCallback(async (titleId: string | null) => {
-    console.log(`[UserContext] Updating title to: ${titleId}`);
-    // Just call the profile update service directly
     return handleUpdateUserProfile({ title_id: titleId });
   }, [handleUpdateUserProfile]);
 
@@ -413,47 +409,60 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
   const handleIncrementStatBonus = useCallback(async (statLabel: string, amount: number): Promise<{ error: Error | null }> => {
     if (!user?.id) return { error: new Error("User not available") };
     const userId = user.id;
-    console.log(`[UserContext] Incrementing ${statLabel} bonus by ${amount}`);
     let incrementError: Error | null = null;
     try {
-      const result = await StatService.incrementStatBonus(userId, statLabel, amount);
-      if (result.error) throw result.error;
+      const { data: freshStatsFromService, error: serviceError } = await StatService.incrementStatBonus(userId, statLabel, amount);
+      
+      if (serviceError) {
+        throw serviceError;
+      }
 
-      console.log(`[UserContext] Stat ${statLabel} bonus updated, refetching all user data with current user object...`);
-      await fetchAllUserData(userId, user);
+      if (freshStatsFromService) {
+        setStats(freshStatsFromService);
+        await StatService.updateCachedStats(userId, freshStatsFromService);
+        addStatNotification(statLabel, amount); 
+      } else {
+        console.warn("[UserContext] incrementStatBonus service call did not return fresh stats data, local/cache update skipped.");
+      }
 
     } catch (err) {
-      console.error(`[UserContext] Error incrementing ${statLabel} bonus:`, err);
+      console.error(`[UserContext] Error incrementing ${statLabel} bonus:`, getErrorMessage(err));
       incrementError = new Error(getErrorMessage(err));
     }
     return { error: incrementError };
-  }, [user, fetchAllUserData]);
+  }, [user, addStatNotification]); 
 
   // --- Increment Discipline Bonus ---
   const handleIncrementDisciplineBonus = useCallback(async (amount: number): Promise<{ error: Error | null }> => {
     if (!user?.id) return { error: new Error("User not available") };
     const userId = user.id;
-    console.log(`[UserContext] Incrementing Discipline bonus by ${amount}`);
     let incrementError: Error | null = null;
      try {
-      const result = await StatService.incrementDisciplineBonus(userId, amount);
-      if (result.error) throw result.error;
+      const { data: freshStatsFromService, error: serviceError } = await StatService.incrementDisciplineBonus(userId, amount);
 
-      console.log(`[UserContext] Discipline bonus updated, refetching all user data with current user object...`);
-      await fetchAllUserData(userId, user);
+      if (serviceError) {
+        throw serviceError;
+      }
+
+      if (freshStatsFromService) {
+        setStats(freshStatsFromService);
+        await StatService.updateCachedStats(userId, freshStatsFromService);
+        addStatNotification('DIS', amount); 
+      } else {
+        console.warn("[UserContext] incrementDisciplineBonus service call did not return fresh stats data, local/cache update skipped.");
+      }
 
     } catch (err) {
-      console.error(`[UserContext] Error incrementing Discipline bonus:`, err);
+      console.error(`[UserContext] Error incrementing Discipline bonus:`, getErrorMessage(err));
       incrementError = new Error(getErrorMessage(err));
     }
     return { error: incrementError };
-  }, [user, fetchAllUserData]);
+  }, [user, addStatNotification]); 
 
   // --- Claim Achievement ---
   const handleClaimAchievement = useCallback(async (achievementId: string): Promise<{ error: Error | null }> => {
     if (!user?.id || !profile || !stats) return { error: new Error("User, profile, or stats not available") };
     const userId = user.id;
-    console.log(`[UserContext] Claiming achievement: ${achievementId}`);
     setIsAchievementLoading(true);
     let claimError: Error | null = null;
 
@@ -469,7 +478,6 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
       if (result.error) throw result.error;
       if (!result.data) throw new Error('Claim achievement reward returned no data.');
 
-      console.log(`[UserContext] Achievement ${achievementId} claimed, refetching all user data with current user object...`);
       await fetchAllUserData(userId, user);
 
       const claimedAchievementDef = getAchievementDefinition(achievementId);
@@ -479,7 +487,7 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
       }
 
     } catch (err) {
-      console.error(`[UserContext] Error claiming achievement:`, err);
+      console.error(`[UserContext] Error claiming achievement:`, getErrorMessage(err));
       claimError = new Error(getErrorMessage(err));
     } finally {
       setIsAchievementLoading(false);
@@ -499,7 +507,7 @@ export function UserProvider({ children, isAppReady }: UserProviderProps) {
         await UserService.dismissWarningForToday(user.id);
         setIsWarningDismissedToday(true);
       } catch (err) {
-        console.error('[UserContext] Failed to dismiss warning:', err);
+        console.error('[UserContext] Failed to dismiss warning:', getErrorMessage(err));
       }
   }, [user?.id]);
 

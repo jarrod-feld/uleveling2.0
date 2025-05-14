@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import {
   Barbell, Brain, Heart, Check, X, CheckSquare, XSquare, Info,
@@ -63,13 +63,13 @@ export default function QuestCard({
 }: QuestCardProps) {
 
   // --- Debugging Logs --- 
-  console.log('---------------------------');
-  console.log(`[QuestCard] Rendering Card for ID: ${item?.id}, Title: ${item?.title}`);
-  console.log('[QuestCard] Full item prop:', JSON.stringify(item, null, 2));
-  console.log('[QuestCard] item.stats:', JSON.stringify(item?.stats, null, 2));
-  console.log('[QuestCard] item.statIncrements:', JSON.stringify(item?.statIncrements, null, 2));
-  console.log('[QuestCard] item.progress:', JSON.stringify(item?.progress, null, 2));
-  console.log('---------------------------');
+  // console.log('---------------------------');
+  // console.log(`[QuestCard] Rendering Card for ID: ${item?.id}, Title: ${item?.title}`);
+  // console.log('[QuestCard] Full item prop:', JSON.stringify(item, null, 2));
+  // console.log('[QuestCard] item.stats:', JSON.stringify(item?.stats, null, 2));
+  // console.log('[QuestCard] item.statIncrements:', JSON.stringify(item?.statIncrements, null, 2));
+  // console.log('[QuestCard] item.progress:', JSON.stringify(item?.progress, null, 2));
+  // console.log('---------------------------');
   // ----------------------
 
   // --- Add safe defaults right before use, if logs show issues ---
@@ -98,7 +98,7 @@ export default function QuestCard({
     }
   };
   const handleUndo = () => {
-    console.log(`[QuestCard] handleUndo called for item ID: ${item.id}`);
+    // console.log(`[QuestCard] handleUndo called for item ID: ${item.id}`); // Removed
     onUndoStatus?.(item.id);
   };
 
@@ -106,7 +106,7 @@ export default function QuestCard({
 
   const openPopup = () => {
     if (!isInactive) {
-       console.log(`[QuestCard] openPopup called for item ID: ${item.id}`);
+       // console.log(`[QuestCard] openPopup called for item ID: ${item.id}`); // Removed
        setIsPopupVisible(true);
     }
   };
@@ -139,12 +139,6 @@ export default function QuestCard({
   const isSkipped = item.status === 'skipped';
   const isInactive = isCompleted || isSkipped;
 
-  const cardStyle = [
-    styles.card,
-    isCompleted && { borderColor: COLOR.greenDone },
-    isSkipped && { borderColor: COLOR.red },
-  ];
-
   const statusIcon = isCompleted 
       ? <CheckSquare size={s(20)} color={COLOR.greenDone} weight="fill" style={styles.statusIcon}/> 
       : isSkipped 
@@ -159,54 +153,61 @@ export default function QuestCard({
         renderLeftActions={!isInactive ? renderLeftActions : undefined}
         onSwipeableOpen={handleSwipeOpen}
         enabled={!isInactive}
-        friction={1}
-        overshootFriction={4}
+        friction={0.8}
+        overshootFriction={3}
         activeOffsetX={[-10, 10]}
         rightThreshold={60}
         leftThreshold={60}
       >
         <Pressable disabled={isInactive}>
-          <View style={cardStyle}>
-            <View style={styles.topContent}>
-              <View style={styles.row}>
-                <View style={styles.iconColumn}>
-                  <View style={styles.firstIconWrapper}>
-                    <Icon1 size={ms(20)} color={COLOR.white} weight="fill" />
-                  </View>
-                  {Icon2 && (
-                    <View style={styles.secondIconWrapper}>
-                      <Icon2 size={ms(16)} color={COLOR.white} weight="fill" />
+          <View style={styles.cardFrameContainer}>
+            <View style={styles.cardContent}>
+              <View style={styles.topContent}>
+                <View style={styles.row}>
+                  <View style={styles.iconColumn}>
+                    <View style={styles.firstIconWrapper}>
+                      <Icon1 size={ms(20)} color={COLOR.white} weight="fill" />
                     </View>
-                  )}
-                </View>
-                <View style={styles.textColumn}>
-                  <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-                  {goalTitle && (
-                    <Text style={styles.parent}>{`Goal: ${goalTitle}`}</Text>
-                  )}
+                    {Icon2 && (
+                      <View style={styles.secondIconWrapper}>
+                        <Icon2 size={ms(16)} color={COLOR.white} weight="fill" />
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.textColumn}>
+                    <Text style={[styles.title, { fontWeight: '600' }]} numberOfLines={1}>{item.title}</Text>
+                    {goalTitle && (
+                      <Text style={[styles.parent, { fontWeight: '600' }]}>{`Goal: ${goalTitle}`}</Text>
+                    )}
+                  </View>
                 </View>
               </View>
-            </View>
 
-            <View style={styles.rowEnd}>
-              {isInactive ? (
-                <Pressable onPress={handleUndo} style={styles.actionButtonContainer}>
-                  <Text style={styles.undoText}>[undo]</Text>
-                </Pressable>
-              ) : (
-                <View style={styles.actionButtonContainer} />
-              )}
-              <View style={{ flex: 1 }} />
-              {statusIcon ? (
-                statusIcon
-              ) : (
-                <Pressable onPress={openPopup} style={styles.progressButton}>
-                  <Text style={styles.progressButtonText}>
-                    [{count}/{total}]
-                  </Text>
-                </Pressable>
-              )}
+              <View style={styles.rowEnd}>
+                {isInactive ? (
+                  <Pressable onPress={handleUndo} style={styles.actionButtonContainer}>
+                    <Text style={styles.undoText}>[undo]</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.actionButtonContainer} />
+                )}
+                <View style={{ flex: 1 }} />
+                {statusIcon ? (
+                  statusIcon
+                ) : (
+                  <Pressable onPress={openPopup} style={styles.progressButton}>
+                    <Text style={[styles.progressButtonText, { fontWeight: '600' }] }>
+                      [{count}/{total}]
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
             </View>
+            <Image
+              source={require('@/assets/images/questcardframe.png')}
+              style={styles.cardFrameOverlay}
+              resizeMode='stretch'
+            />
           </View>
         </Pressable>
       </Swipeable>
@@ -224,20 +225,34 @@ export default function QuestCard({
 }
 
 /* ——— styles ——— */
-const baseFont = { fontFamily: 'PressStart2P' };
+const baseFont = { fontFamily: 'EuroStyle' };
 
 const styles = StyleSheet.create({
-  card: {
-    borderWidth: 2,
-    borderColor: COLOR.border,
-    padding          : s(10),
-    backgroundColor  : COLOR.bg,
+  cardFrameContainer: {
     width: '100%',
-    marginTop        : CardMarginTop,
-    justifyContent   : 'space-between',
-    height           : CardHeight,
+    height: CardHeight + CardMarginTop,
+    marginTop: CardMarginTop,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardContent: {
+    position: 'absolute',
+    top: CardMarginTop * 0.1,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    margin: s(5), // inset to avoid overlaying frame edges
+    backgroundColor: COLOR.bg,
+    padding: s(10),
     paddingLeft: s(6),
-    overflow: 'hidden',
+    justifyContent: 'space-between',
+  },
+  cardFrameOverlay: {
+    width: '100%',
+    height: CardHeight,
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   topContent: {
   },
@@ -271,11 +286,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     marginTop: vs(3),
   },
-  title : { ...baseFont, color: COLOR.white, fontSize: s(11), flexShrink: 1, marginTop: vs(2) },
+  title : { ...baseFont, color: '#00ffff', fontSize: s(12), flexShrink: 1, marginTop: vs(2) },
   parent: { 
-    ...baseFont, 
-    color: COLOR.green, 
-    fontSize: s(8), 
+    ...baseFont,
+    color: '#00ffff',
+    fontSize: s(10),
     marginTop: vs(4),
   },
   progress: { 
@@ -296,7 +311,7 @@ const styles = StyleSheet.create({
   },
   undoText: {
     ...baseFont,
-    color: COLOR.grey,
+    color: '#00ffff',
     fontSize: s(10),
   },
   swipeActionBackground: {
@@ -318,8 +333,8 @@ const styles = StyleSheet.create({
      marginRight: s(4),
   },
   progressButtonText: {
-     ...baseFont, 
-     color: COLOR.white, 
-     fontSize: s(11),
+     ...baseFont,
+     color: '#00ffff',
+     fontSize: s(12),
   },
 }); 

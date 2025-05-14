@@ -36,7 +36,7 @@ export default function DailyHeader() {
 }
 
 /* styles */
-const FONT = { fontFamily:'PressStart2P' };
+const FONT = { fontFamily:'TrajanPro-Bold' };
 const styles = StyleSheet.create({
   card: {
     width: '90%',

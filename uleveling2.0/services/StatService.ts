@@ -163,41 +163,60 @@ class StatService {
   }
 
   /**
-   * Increments the bonus for a specific stat.
-   * Uses UPSERT to handle cases where the stat row might not exist yet.
+   * Updates the cached stats for a user.
    */
-  static async incrementStatBonus(userId: string, statLabel: string, amount: number): Promise<{ error: Error | null }> {
+  static async updateCachedStats(userId: string, newStats: UserStats): Promise<void> {
+    if (!userId || !newStats) {
+      console.warn("[StatService] User ID and newStats required to update cache.");
+      return;
+    }
+    try {
+      console.log(`[StatService] Updating cached stats for user ${userId}.`);
+      await CacheService.set(`stats_${userId}`, newStats, CACHE_TTL);
+    } catch (e) {
+      console.error(`[StatService] Error updating cached stats for user ${userId}:`, e);
+    }
+  }
+
+  /**
+   * Increments the bonus for a specific stat.
+   * After incrementing, it fetches and returns the updated stats for the user.
+   */
+  static async incrementStatBonus(userId: string, statLabel: string, amount: number): Promise<{ data: UserStats | null; error: Error | null }> {
     console.log(`[StatService] Incrementing ${statLabel} bonus by ${amount} for user ${userId} in DB...`);
     if (!userId || !statLabel) {
-      return { error: new Error("User ID and Stat Label required.") };
+      return { data: null, error: new Error("User ID and Stat Label required.") };
     }
 
     try {
-        // Use RPC call to handle the increment atomically and potential upsert
-        const { error } = await this.supabase.rpc('increment_stat_bonus', {
+        const { error: rpcError } = await this.supabase.rpc('increment_stat_bonus', {
             user_id_input: userId,
             stat_label_input: statLabel,
             increment_amount: amount
         });
 
-      if (error) {
-        console.error(`[StatService] DB error incrementing ${statLabel} bonus for user ${userId}:`, error);
-        throw new Error(error.message);
+      if (rpcError) {
+        console.error(`[StatService] DB error incrementing ${statLabel} bonus for user ${userId}:`, rpcError);
+        throw new Error(rpcError.message);
       }
 
-      console.log(`[StatService] ${statLabel} bonus incremented successfully for user ${userId}.`);
-      return { error: null };
+      console.log(`[StatService] ${statLabel} bonus incremented successfully for user ${userId}. Fetching updated stats...`);
+      // Invalidate cache before fetching new stats to ensure freshness
+      await CacheService.remove(`stats_${userId}`);
+      return this.getStats(userId); // Fetch and return all stats for the user
 
     } catch (e) {
       console.error(`[StatService] Failed incrementing ${statLabel} bonus for user ${userId}:`, e);
-      return { error: e instanceof Error ? e : new Error(`Failed to increment ${statLabel} bonus`) };
+      return { data: null, error: e instanceof Error ? e : new Error(`Failed to increment ${statLabel} bonus`) };
     }
   }
 
   /**
    * Increments the bonus for the Discipline stat.
+   * After incrementing, it fetches and returns the updated stats for the user.
    */
-  static async incrementDisciplineBonus(userId: string, amount: number): Promise<{ error: Error | null }> {
+  static async incrementDisciplineBonus(userId: string, amount: number): Promise<{ data: UserStats | null; error: Error | null }> {
+    // This will call the updated incrementStatBonus, which now returns UserStats
     return this.incrementStatBonus(userId, 'DIS', amount);
   }
 

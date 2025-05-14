@@ -58,13 +58,18 @@ class QuestService {
    * Fetches today's quests for the current user from the database.
    * If no quests exist for today, triggers generation of new daily quests.
    */
-  static async getQuests(userId: string): Promise<{ data: Quest[] | null; error: Error | null }> {
-    console.log(`[QuestService] Attempting to get cached quests for user ${userId}...`);
-    const cached = await CacheService.get<Quest[]>(`quests_${userId}`);
-    if (cached) {
-      console.log(`[QuestService] Returning cached quests for user ${userId}.`);
-      return { data: cached, error: null };
+  static async getQuests(userId: string, forceRefresh: boolean = false): Promise<{ data: Quest[] | null; error: Error | null }> {
+    if (!forceRefresh) {
+        console.log(`[QuestService] Attempting to get cached quests for user ${userId}...`);
+        const cached = await CacheService.get<Quest[]>(`quests_${userId}`);
+        if (cached) {
+        console.log(`[QuestService] Returning cached quests for user ${userId}.`);
+        return { data: cached, error: null };
+        }
+    } else {
+        console.log(`[QuestService] Force refresh requested for quests for user ${userId}. Bypassing cache check.`);
     }
+
     console.log(`[QuestService] Fetching today's quests for user ${userId} from DB...`);
     const todayStart = startOfDay(new Date()).toISOString();
     const todayEnd = endOfDay(new Date()).toISOString();
@@ -141,7 +146,7 @@ class QuestService {
   /**
     * Saves initial quests (e.g., from onboarding) to the database.
    */
-   static async saveQuests(userId: string, quests: Quest[]): Promise<{ success: boolean; error: Error | null }> {
+   static async saveQuests(userId: string, quests: Quest[]): Promise<{ success: boolean; error: Error | null; data?: Quest[] }> {
      console.log(`[QuestService] Attempting to save ${quests.length} initial quests for user ${userId} to DB...`);
      if (!quests || quests.length === 0) {
          return { success: true, error: null }; // Nothing to save
@@ -165,15 +170,33 @@ class QuestService {
      }));
 
      try {
-        const { error } = await this.supabase.from('user_quests').insert(dbRows);
+        // Insert and select the newly created rows
+        const { data: insertedQuestsData, error } = await this.supabase
+            .from('user_quests')
+            .insert(dbRows)
+            .select(); // <--- Add .select() here
+
         if (error) {
             console.error(`[QuestService] DB error inserting initial quests for user ${userId}:`, error);
             throw new Error(error.message);
         }
-        console.log(`[QuestService] ${dbRows.length} initial quests saved successfully for user ${userId}.`);
-        console.log(`[QuestService] Caching ${quests.length} saved quests for user ${userId}.`);
-        await CacheService.set(`quests_${userId}`, quests, CACHE_TTL);
-        return { success: true, error: null };
+        
+        if (!insertedQuestsData) {
+            console.error(`[QuestService] No data returned after inserting initial quests for user ${userId}.`);
+            throw new Error('No data returned after quest insertion.');
+        }
+
+        console.log(`[QuestService] ${insertedQuestsData.length} initial quests saved successfully for user ${userId}.`);
+        
+        // Map the inserted data (which includes quest_instance_id) back to Quest objects
+        const savedQuestsWithIds = insertedQuestsData.map(_mapDbRowToQuest);
+
+        console.log(`[QuestService] Caching ${savedQuestsWithIds.length} saved quests with IDs for user ${userId}.`);
+        await CacheService.set(`quests_${userId}`, savedQuestsWithIds, CACHE_TTL);
+        // It's crucial to invalidate or update any existing cache for "today's quests" if this save operation affects it.
+        // For now, we are overwriting the specific user's quest cache.
+
+        return { success: true, error: null, data: savedQuestsWithIds }; // Return the quests with IDs
      } catch (e) {
         console.error(`[QuestService] Error saving initial quests for user ${userId}:`, e);
         return { success: false, error: e instanceof Error ? e : new Error("Failed to save initial quests") };
@@ -438,7 +461,7 @@ class QuestService {
   /**
    * Generates and saves new daily quests using AI and inserts them into the database.
    */
-  static async generateAndSaveDailyQuests(userId: string): Promise<{ success: boolean; error: Error | null }> {
+  static async generateAndSaveDailyQuests(userId: string): Promise<{ success: boolean; error: Error | null; data?: Quest[] }> {
     console.log(`[QuestService] Generating and saving new daily quests for user ${userId}...`);
 
     try {
@@ -476,14 +499,32 @@ class QuestService {
       }));
 
       // 4. Insert into DB
-      const { error: insertError } = await this.supabase.from('user_quests').insert(dbRows);
+      const { data: insertedQuestsData, error: insertError } = await this.supabase
+        .from('user_quests')
+        .insert(dbRows)
+        .select(); // <--- Add .select() here
+
       if (insertError) {
         console.error(`[QuestService] DB error inserting generated quests for user ${userId}:`, insertError);
         throw new Error(insertError.message);
       }
 
-      console.log(`[QuestService] Successfully generated and saved ${dbRows.length} daily quests for user ${userId}.`);
-      return { success: true, error: null };
+      if (!insertedQuestsData) {
+        console.error(`[QuestService] No data returned after inserting daily quests for user ${userId}.`);
+        throw new Error('No data returned after daily quest insertion.');
+      }
+
+      console.log(`[QuestService] Successfully generated and saved ${insertedQuestsData.length} daily quests for user ${userId}.`);
+      
+      // Map the inserted data (which includes quest_instance_id) back to Quest objects
+      const savedQuestsWithIds = insertedQuestsData.map(_mapDbRowToQuest);
+
+      // Update cache with the newly generated quests that now have IDs
+      console.log(`[QuestService] Caching ${savedQuestsWithIds.length} generated daily quests with IDs for user ${userId}.`);
+      await CacheService.set(`quests_${userId}`, savedQuestsWithIds, CACHE_TTL);
+      // This will overwrite any existing quests for the day, which is likely the desired behavior for a daily refresh.
+
+      return { success: true, error: null, data: savedQuestsWithIds }; // Return the quests with IDs
 
     } catch (e: any) {
       console.error(`[QuestService] Error generating/saving daily quests for user ${userId}:`, e);

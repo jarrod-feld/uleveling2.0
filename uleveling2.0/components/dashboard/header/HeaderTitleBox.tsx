@@ -10,23 +10,20 @@ export default function HeaderTitleBox() {
   );
 }
 
-const FONT = { fontFamily: 'PressStart2P' };
+const FONT = { fontFamily: 'TrajanPro-Bold' };
 const styles = StyleSheet.create({
   box: {
-    
-    borderWidth: 2,
-    borderColor: '#fff',
     paddingVertical: vs(6),
     paddingHorizontal: s(20),
     alignItems: 'center',
   },
   txt: {
     ...FONT,
-    fontSize: s(20),
-    color: '#fff',
-    textShadowColor: 'rgba(255, 255, 255, 0.7)',
+    fontSize: s(24),
+    color: '#00ffff',
+    textShadowColor: 'rgba(0, 255, 255, 0.8)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
+    textShadowRadius: 8,
     textAlign: 'center',
   },
 }); 

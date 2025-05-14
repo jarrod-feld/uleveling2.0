@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(18, 0.4),
     fontWeight: 'bold',
     letterSpacing: 1,
-    fontFamily: 'PressStart2P',
+    fontFamily: 'TrajanPro-Bold',
     textShadowColor: '#26c6ff',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
